@@ -1,8 +1,20 @@
 {
   "watchlist": [
     {
+      "id": "movie_1794686720972",
+      "movie_name": "scene ",
+      "district": "Coimbatore",
+      "target_theatres": [
+        "KG Cinemas"
+      ],
+      "target_date": null,
+      "fdfs_only": true,
+      "fdfs_max_time": "08:00",
+      "enabled": true
+    },
+    {
       "id": "movie_1794685399566",
-      "movie_name": "O.M",
+      "movie_name": "O.M Operation Mole",
       "district": "Coimbatore",
       "target_theatres": [
         "KG Cinemas"
@@ -10,7 +22,8 @@
       "target_date": null,
       "fdfs_only": false,
       "fdfs_max_time": "08:00",
-      "enabled": true
+      "enabled": true,
+      "bms_url": "https://in.bookmyshow.com/movies/coimbatore/om-operation-mole/ET00504901"
     }
   ]
 }

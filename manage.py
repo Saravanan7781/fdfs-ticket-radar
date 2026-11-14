@@ -33,7 +33,11 @@ def prompt_movie_details(existing: dict = None) -> dict:
     print("\n👉 Fill in the details (Press Enter to keep current value):\n")
 
     cur_name = ex.get("movie_name", "Coolie")
-    name = input(f"• Movie Name [{cur_name}]: ").strip() or cur_name
+    name = input(f"• Movie Name / Title [{cur_name}]: ").strip() or cur_name
+
+    cur_regex = ex.get("movie_regex") or "Smart Auto-Regex"
+    regex_in = input(f"• Custom Regex pattern (Optional, Enter for auto-smart regex) [{cur_regex}]: ").strip()
+    movie_regex = regex_in if regex_in else (ex.get("movie_regex") if cur_regex != "Smart Auto-Regex" else None)
 
     cur_city = ex.get("district", "Chennai")
     city = input(f"• City / District [{cur_city}]: ").strip() or cur_city
@@ -66,6 +70,7 @@ def prompt_movie_details(existing: dict = None) -> dict:
     return {
         "id": item_id,
         "movie_name": name,
+        "movie_regex": movie_regex,
         "district": city,
         "target_theatres": theatres,
         "target_date": target_date,

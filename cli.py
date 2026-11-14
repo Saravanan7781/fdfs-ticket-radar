@@ -55,6 +55,7 @@ def cmd_add(args):
     new_item = {
         "id": item_id,
         "movie_name": args.movie.strip(),
+        "movie_regex": args.regex.strip() if args.regex else None,
         "district": args.city.strip(),
         "target_theatres": theatres,
         "target_date": args.date,
@@ -96,7 +97,8 @@ def main():
 
     # add
     parser_add = subparsers.add_parser("add", help="Add a new movie to track")
-    parser_add.add_argument("--movie", required=True, help="Movie name (e.g. 'Coolie')")
+    parser_add.add_argument("--movie", required=True, help="Movie name or regex (e.g. 'Coolie', 'O\.?M')")
+    parser_add.add_argument("--regex", help="Optional custom regex for movie matching (e.g. 'O\.?M', 'Thalapathy\\s*69')")
     parser_add.add_argument("--city", required=True, help="District/City (e.g. 'Chennai')")
     parser_add.add_argument("--theatres", help="Comma-separated theatres (e.g. 'Rohini,Vettri')")
     parser_add.add_argument("--date", help="Release date in YYYY-MM-DD")

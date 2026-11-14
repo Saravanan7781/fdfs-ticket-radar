@@ -118,8 +118,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
           <div class="grid">
             <div class="form-group">
-              <label>Movie Name</label>
-              <input type="text" value="${item.movie_name || ''}" onchange="updateItem(${index}, 'movie_name', this.value)" placeholder="e.g. Coolie, Thalapathy 69">
+              <label>Movie Name / Title</label>
+              <input type="text" value="${item.movie_name || ''}" onchange="updateItem(${index}, 'movie_name', this.value)" placeholder="e.g. Coolie, O.M, Scene">
+            </div>
+
+            <div class="form-group">
+              <label>Custom Movie Regex (Optional)</label>
+              <input type="text" value="${item.movie_regex || ''}" onchange="updateItem(${index}, 'movie_regex', this.value)" placeholder="e.g. O\.?M, Thalapathy\s*(69|T69)">
+              <div class="tag-help">💡 Auto-regex active if blank (handles O.M, OM, dots, hyphens & formats).</div>
             </div>
 
             <div class="form-group">

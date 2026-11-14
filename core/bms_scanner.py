@@ -4,11 +4,11 @@ import json
 import logging
 import re
 import time
-from typing import List, Optional
+from typing import List, Optional, Union
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 
-from core.models import Show, WatchItem
+from core.models import Show, WatchItem, build_movie_regex
 
 logger = logging.getLogger(__name__)
 
@@ -65,14 +65,20 @@ class BMSScanner:
         }
         return mapping.get(city_clean, (city_clean, city_clean[:4]))
 
-    def search_movie(self, movie_name: str, district: str) -> Optional[dict]:
-        """Search BMS explore and upcoming pages for a matching movie title and return URL/event code."""
+    def search_movie(self, movie_target: Union[str, WatchItem], district: str) -> Optional[dict]:
+        """Search BMS explore and upcoming pages using regex matching for title and URL."""
+        if isinstance(movie_target, WatchItem):
+            pat = movie_target.get_regex_pattern()
+            movie_display_name = movie_target.movie_name
+        else:
+            pat = build_movie_regex(movie_target)
+            movie_display_name = movie_target
+
         city_slug, city_code = self._normalize_city(district)
         urls_to_check = [
             f"{self.BASE_URL}/explore/movies-{city_slug}",
             f"{self.BASE_URL}/explore/upcoming-movies-{city_slug}",
         ]
-        target_clean = movie_name.strip().lower()
 
         for explore_url in urls_to_check:
             for attempt in range(2):
@@ -95,9 +101,9 @@ class BMSScanner:
 
                     links = soup.find_all("a", href=re.compile(r"/movies/"))
                     for a in links:
-                        link_text = a.get_text(strip=True).lower()
+                        link_text = a.get_text(separator=" ", strip=True)
                         href = a.get("href", "")
-                        if target_clean in link_text or target_clean in href.lower():
+                        if pat.search(link_text) or pat.search(href):
                             full_url = href if href.startswith("http") else f"{self.BASE_URL}{href}"
                             m = re.search(r"(?:/movies/)?(?:[^/]+/)*([^/]+)/(ET\d+)", full_url)
                             if m:
@@ -107,11 +113,11 @@ class BMSScanner:
                                 event_match = re.search(r"(ET\d+)", href)
                                 event_code = event_match.group(1) if event_match else None
                                 slug_match = re.search(r"/movies/([^/]+)/", href)
-                                movie_slug = slug_match.group(1) if slug_match else movie_name.lower().replace(" ", "-")
+                                movie_slug = slug_match.group(1) if slug_match else movie_display_name.lower().replace(" ", "-")
 
-                            logger.info("Found BMS movie match: '%s' -> %s", movie_name, full_url)
+                            logger.info("Found BMS movie regex match: '%s' (matched '%s') -> %s", movie_display_name, link_text, full_url)
                             return {
-                                "title": a.get_text(strip=True),
+                                "title": link_text,
                                 "url": full_url,
                                 "event_code": event_code,
                                 "movie_slug": movie_slug,
@@ -121,7 +127,7 @@ class BMSScanner:
                     break
 
                 except Exception as e:
-                    logger.error("Error searching BMS for %s: %s", movie_name, e)
+                    logger.error("Error searching BMS for %s: %s", movie_display_name, e)
 
         return None
 
@@ -143,7 +149,7 @@ class BMSScanner:
                 slug_match = re.search(r"/movies/([^/]+)/", watch_item.bms_url)
                 movie_slug = slug_match.group(1) if slug_match else watch_item.movie_name.lower().replace(" ", "-")
         else:
-            movie_info = self.search_movie(watch_item.movie_name, watch_item.district)
+            movie_info = self.search_movie(watch_item, watch_item.district)
             if movie_info:
                 self.last_url = movie_info["url"]
                 event_code = movie_info["event_code"]

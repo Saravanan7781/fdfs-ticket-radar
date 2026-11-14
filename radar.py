@@ -89,9 +89,11 @@ def run_radar():
             for item in watchlist:
                 theatres_desc = ", ".join(item.target_theatres) if item.target_theatres else "ALL THEATRES in District"
                 fdfs_desc = f"FDFS only (<= {item.fdfs_max_time} AM)" if item.fdfs_only else "All Show Times"
+                regex_info = f"Custom Regex: /{item.movie_regex}/i" if item.movie_regex else f"Smart Regex Active (matches '{item.movie_name}', punctuation & suffixes)"
 
                 print(f"\n   ┌─ 🎬 Tracking: '{item.movie_name}' ({item.district})")
-                print(f"   │  🎯 Filter: Theatres: [{theatres_desc}] | {fdfs_desc}")
+                print(f"   │  🔍 Matcher: {regex_info}")
+                print(f"   │  🎯 Filter:  Theatres: [{theatres_desc}] | {fdfs_desc}")
 
                 # 1. Scan BookMyShow
                 bms_raw = bms.scan_shows(item)
