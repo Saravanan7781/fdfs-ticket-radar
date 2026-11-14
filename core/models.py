@@ -28,6 +28,8 @@ class WatchItem(BaseModel):
     target_date: Optional[str] = None  # YYYY-MM-DD
     fdfs_only: bool = True
     fdfs_max_time: str = "08:00"  # Show time at or before 08:00 AM qualifies as FDFS
+    bms_url: Optional[str] = None  # Direct BookMyShow movie/booking URL (optional)
+    district_url: Optional[str] = None  # Direct District movie/booking URL (optional)
     enabled: bool = True
 
 

@@ -60,6 +60,8 @@ def cmd_add(args):
         "target_date": args.date,
         "fdfs_only": not args.all_shows,
         "fdfs_max_time": args.max_time or "08:00",
+        "bms_url": args.bms_url,
+        "district_url": args.district_url,
         "enabled": True,
     }
 
@@ -100,6 +102,8 @@ def main():
     parser_add.add_argument("--date", help="Release date in YYYY-MM-DD")
     parser_add.add_argument("--all-shows", action="store_true", help="Alert on any show, not just FDFS")
     parser_add.add_argument("--max-time", default="08:00", help="Max time for FDFS (default: 08:00)")
+    parser_add.add_argument("--bms-url", help="Direct BookMyShow movie/tickets URL (optional)")
+    parser_add.add_argument("--district-url", help="Direct District movie URL (optional)")
 
     # test
     subparsers.add_parser("test", help="Send a test notification to your phone")
