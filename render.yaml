@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: fdfs-ticket-radar
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python cloud_app.py
+    healthCheckPath: /health
+    envVars:
+      - key: NTFY_TOPIC
+        value: saravanan-fdfs-siren-7781
+      - key: POLL_INTERVAL_WAR_ROOM
+        value: "45"
+      - key: POLL_INTERVAL_CALM
+        value: "180"
+      - key: ENABLE_PHONE_SIREN
+        value: "true"
+      - key: PYTHON_VERSION
+        value: "3.11.9"
