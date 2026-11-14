@@ -100,9 +100,9 @@ def run_radar():
                 all_matches = bms_matched + dist_matched
 
                 for show in all_matches:
-                    key = f"{item.id}:{show.platform}:{show.theatre_name}:{show.date}"
+                    key = f"{item.id}:{show.platform}:{show.theatre_name}:{show.show_time}:{show.date}"
                     if key in alerted_keys:
-                        continue  # Already alerted for this show
+                        continue  # Already alerted for this exact show
 
                     # 🔥 TRIGGER SIREN ALERT!
                     alert = AlertEvent(

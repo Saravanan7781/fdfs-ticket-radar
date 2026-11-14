@@ -1,5 +1,6 @@
-"""BookMyShow Scanner with TLS Fingerprint Impersonation and Session Warm-Up."""
+"""BookMyShow Scanner with Real Showtime & Venue Extraction from JSON State."""
 
+import json
 import logging
 import re
 import time
@@ -38,35 +39,33 @@ class BMSScanner:
             "Upgrade-Insecure-Requests": "1",
         })
         try:
-            # Warm up session with root domain
             self.session.get(self.BASE_URL, impersonate="chrome120", timeout=self.timeout)
             logger.debug("BMS session warmed up with cookies.")
         except Exception as e:
             logger.warning("BMS session warm-up error: %s", e)
 
-    def _normalize_city(self, city: str) -> str:
-        """Convert common city/district names to BMS slug format."""
+    def _normalize_city(self, city: str) -> tuple[str, str]:
+        """Convert city/district name to (city_slug, city_code) tuple."""
         city_clean = city.strip().lower()
         mapping = {
-            "chennai": "chennai",
-            "coimbatore": "coimbatore",
-            "bangalore": "bengaluru",
-            "bengaluru": "bengaluru",
-            "hyderabad": "hyderabad",
-            "mumbai": "mumbai",
-            "madurai": "madurai",
-            "trichy": "trichy",
-            "tiruchirappalli": "trichy",
-            "salem": "salem",
-            "kochi": "kochi",
-            "delhi": "national-capital-region-ncr",
-            "ncr": "national-capital-region-ncr",
+            "chennai": ("chennai", "chen"),
+            "coimbatore": ("coimbatore", "coim"),
+            "bangalore": ("bengaluru", "bang"),
+            "bengaluru": ("bengaluru", "bang"),
+            "hyderabad": ("hyderabad", "hyd"),
+            "mumbai": ("mumbai", "mumbai"),
+            "madurai": ("madurai", "madu"),
+            "trichy": ("trichy", "trch"),
+            "tiruchirappalli": ("trichy", "trch"),
+            "salem": ("salem", "slm"),
+            "kochi": ("kochi", "koch"),
+            "delhi": ("national-capital-region-ncr", "ncr"),
         }
-        return mapping.get(city_clean, city_clean)
+        return mapping.get(city_clean, (city_clean, city_clean[:4]))
 
     def search_movie(self, movie_name: str, district: str) -> Optional[dict]:
         """Search BMS explore page for a matching movie title and return URL/event code."""
-        city_slug = self._normalize_city(district)
+        city_slug, city_code = self._normalize_city(district)
         explore_url = f"{self.BASE_URL}/explore/movies-{city_slug}"
 
         for attempt in range(2):
@@ -77,19 +76,17 @@ class BMSScanner:
                     timeout=self.timeout,
                 )
                 if resp.status_code == 403:
-                    logger.warning("BMS returned 403, refreshing session and retrying...")
+                    logger.warning("BMS returned 403, refreshing session...")
                     time.sleep(2)
                     self._init_warmed_session()
                     continue
 
                 if resp.status_code != 200:
-                    logger.warning("BMS explore returned status %d for %s", resp.status_code, city_slug)
                     return None
 
                 soup = BeautifulSoup(resp.text, "html.parser")
                 target_clean = movie_name.strip().lower()
 
-                # Find all movie links
                 links = soup.find_all("a", href=re.compile(r"/movies/"))
                 for a in links:
                     link_text = a.get_text(strip=True).lower()
@@ -99,80 +96,120 @@ class BMSScanner:
                         event_match = re.search(r"(ET\d+)", href)
                         event_code = event_match.group(1) if event_match else None
 
-                        logger.info("Found BMS movie match: '%s' -> %s", movie_name, full_url)
+                        # Extract movie slug
+                        slug_match = re.search(r"/movies/([^/]+)/", href)
+                        movie_slug = slug_match.group(1) if slug_match else movie_name.lower().replace(" ", "-")
+
+                        logger.info("Found BMS movie: '%s' -> %s", movie_name, full_url)
                         return {
                             "title": a.get_text(strip=True),
                             "url": full_url,
                             "event_code": event_code,
+                            "movie_slug": movie_slug,
                             "city_slug": city_slug,
+                            "city_code": city_code,
                         }
                 break
 
             except Exception as e:
-                logger.error("Error searching BMS for %s in %s: %s", movie_name, district, e)
+                logger.error("Error searching BMS for %s: %s", movie_name, e)
 
         return None
 
     def scan_shows(self, watch_item: WatchItem) -> List[Show]:
-        """Scan BMS for showtimes of a watched movie."""
-        movie_url = watch_item.bms_url
-        if not movie_url:
-            movie_info = self.search_movie(watch_item.movie_name, watch_item.district)
-            if not movie_info:
-                logger.debug("Movie '%s' not listed on BMS yet in %s", watch_item.movie_name, watch_item.district)
-                return []
-            movie_url = movie_info["url"]
+        """Scan BMS for real venues and showtimes."""
+        city_slug, city_code = self._normalize_city(watch_item.district)
+        event_code = None
+        movie_slug = None
 
+        if watch_item.bms_url:
+            code_match = re.search(r"(ET\d+)", watch_item.bms_url)
+            event_code = code_match.group(1) if code_match else None
+            slug_match = re.search(r"/movies/([^/]+)/", watch_item.bms_url)
+            movie_slug = slug_match.group(1) if slug_match else watch_item.movie_name.lower().replace(" ", "-")
+        else:
+            movie_info = self.search_movie(watch_item.movie_name, watch_item.district)
+            if movie_info:
+                event_code = movie_info["event_code"]
+                movie_slug = movie_info["movie_slug"]
+
+        if not event_code or not movie_slug:
+            return []
+
+        # Construct buytickets URL
+        buytickets_url = f"{self.BASE_URL}/buytickets/{movie_slug}-{city_slug}/movie-{city_code}-{event_code}-MT/"
         shows: List[Show] = []
+
         try:
             resp = self.session.get(
-                movie_url,
+                buytickets_url,
                 impersonate="chrome120",
                 timeout=self.timeout,
             )
             if resp.status_code == 403:
                 self._init_warmed_session()
-                resp = self.session.get(movie_url, impersonate="chrome120", timeout=self.timeout)
+                resp = self.session.get(buytickets_url, impersonate="chrome120", timeout=self.timeout)
 
             if resp.status_code != 200:
+                logger.debug("BMS buytickets returned %d", resp.status_code)
                 return []
 
-            soup = BeautifulSoup(resp.text, "html.parser")
-
-            # Check if booking is live (e.g. 'Book tickets' button exists)
-            book_button = soup.find(string=re.compile(r"Book tickets", re.I))
-            if not book_button:
-                logger.debug("BMS booking not open yet for '%s'", watch_item.movie_name)
+            # Parse JSON __INITIAL_STATE__
+            match = re.search(r"window\.__INITIAL_STATE__\s*=\s*(\{.*?\});\s*window\.", resp.text) or re.search(
+                r"window\.__INITIAL_STATE__\s*=\s*(\{.*?\});?\s*</script>", resp.text
+            )
+            if not match:
                 return []
 
-            logger.info("🔥 BMS BOOKING DETECTED for '%s'!", watch_item.movie_name)
+            data = json.loads(match.group(1))
+            queries = data.get("showtimesFunctionalApi", {}).get("queries", {})
 
-            raw_text = soup.get_text()
-            theatres_found = []
+            for qk, qv in queries.items():
+                if "fetchPrimaryDynamic" in qk:
+                    widgets = qv.get("data", {}).get("data", {}).get("showtimeWidgets", [])
+                    for w in widgets:
+                        if w.get("type") == "groupList":
+                            for grp in w.get("data", []):
+                                for item in grp.get("data", []):
+                                    header_data = item.get("header", {}).get("data", {})
+                                    v_name = None
+                                    for comp in header_data.get("components", []):
+                                        c_data = comp.get("data", {})
+                                        add_data = c_data.get("cta", {}).get("additionalData", {})
+                                        if add_data.get("venueName"):
+                                            v_name = add_data.get("venueName")
+                                            break
 
-            if watch_item.target_theatres:
-                for target in watch_item.target_theatres:
-                    if target.lower() in raw_text.lower():
-                        theatres_found.append(target)
-            else:
-                theatres_found = ["All Theatres"]
+                                    if not v_name:
+                                        continue
 
-            target_list = theatres_found if theatres_found else (watch_item.target_theatres or ["All Theatres"])
+                                    for sec in item.get("showtimesSections", []):
+                                        for s_item in sec.get("showtimes", []):
+                                            show_time = (
+                                                s_item.get("title")
+                                                or s_item.get("showTime")
+                                                or s_item.get("additionalData", {}).get("showTime")
+                                            )
+                                            avail = s_item.get("additionalData", {}).get("seatAvalibility", "Available")
+                                            show_date = s_item.get("additionalData", {}).get("showDateCode", "")
 
-            for th in target_list:
-                shows.append(
-                    Show(
-                        theatre_name=th,
-                        show_time="04:00 AM (FDFS / Opening)",
-                        date=watch_item.target_date or "Day 1",
-                        screen_format="2D / IMAX",
-                        booking_url=movie_url,
-                        platform="BookMyShow",
-                        status="Available",
-                    )
-                )
+                                            if show_time:
+                                                shows.append(
+                                                    Show(
+                                                        theatre_name=v_name,
+                                                        show_time=show_time,
+                                                        date=show_date or watch_item.target_date or "Today",
+                                                        screen_format="2D",
+                                                        booking_url=resp.url or buytickets_url,
+                                                        platform="BookMyShow",
+                                                        status=avail,
+                                                    )
+                                                )
+
+            if shows:
+                logger.info("BMS parsed %d real shows for '%s' in %s", len(shows), watch_item.movie_name, watch_item.district)
 
         except Exception as e:
-            logger.error("Error parsing BMS shows for %s: %s", watch_item.movie_name, e)
+            logger.error("Error parsing BMS showtimes: %s", e)
 
         return shows

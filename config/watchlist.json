@@ -14,6 +14,20 @@
       "fdfs_only": true,
       "fdfs_max_time": "08:00",
       "enabled": true
+    },
+    {
+      "id": "scene_coimbatore",
+      "movie_name": "Scene",
+      "district": "Coimbatore",
+      "target_theatres": [
+        "KG"
+      ],
+      "target_date": null,
+      "fdfs_only": true,
+      "fdfs_max_time": "08:00",
+      "bms_url": null,
+      "district_url": null,
+      "enabled": true
     }
   ]
 }
