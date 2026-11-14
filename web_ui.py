@@ -23,6 +23,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f172a">
   <title>FDFS Ticket Radar Dashboard</title>
   <style>
     :root {
@@ -36,54 +39,82 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       --success: #10b981;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background: var(--bg); color: var(--text); padding: 24px; min-height: 100vh; }
+    body { background: var(--bg); color: var(--text); padding: 16px; min-height: 100vh; }
     .container { max-width: 860px; margin: 0 auto; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-    .title { font-size: 24px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px; }
+    .title { font-size: 22px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
     .title span { color: var(--primary); }
-    .btn { background: var(--primary); color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+    .btn { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; text-decoration: none; }
     .btn:hover { background: var(--primary-hover); transform: translateY(-1px); }
     .btn-secondary { background: #334155; }
     .btn-secondary:hover { background: #475569; }
     .btn-danger { background: #ef4444; }
     .btn-danger:hover { background: #dc2626; }
     .btn-sm { padding: 6px 12px; font-size: 13px; }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); }
-    .card-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); }
+    .card-title { font-size: 17px; font-weight: 700; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
     .full-width { grid-column: span 2; }
+    @media (max-width: 640px) { .full-width { grid-column: span 1; } }
     .form-group { display: flex; flex-direction: column; gap: 6px; }
-    label { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    input, select, textarea { background: #0f172a; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; color: white; font-size: 15px; outline: none; transition: 0.2s; }
+    label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    input, select, textarea { background: #0f172a; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: white; font-size: 14px; outline: none; transition: 0.2s; width: 100%; }
     input:focus, select:focus, textarea:focus { border-color: var(--primary); }
-    .toggle-container { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+    .toggle-container { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
     .toggle { position: relative; width: 48px; height: 26px; }
     .toggle input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #334155; border-radius: 26px; transition: 0.3s; }
     .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
     input:checked + .slider { background: var(--success); }
     input:checked + .slider:before { transform: translateX(22px); }
-    .tag-help { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--success); color: white; padding: 12px 20px; border-radius: 8px; font-weight: 600; display: none; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
+    .tag-help { font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: var(--success); color: white; padding: 12px 18px; border-radius: 8px; font-weight: 600; display: none; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); z-index: 999; }
     .badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; background: rgba(225, 29, 72, 0.2); color: #fda4af; }
+    
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 7px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    .pulse-dot {
+      width: 10px; height: 10px; background: #10b981; border-radius: 50%; display: inline-block; animation: pulse 2s infinite; vertical-align: middle;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <div class="title">🎟️ <span>FDFS</span> Ticket Radar</div>
-      <div style="display: flex; gap: 10px;">
-        <button class="btn btn-secondary" onclick="testSiren()">🚨 Test Siren</button>
-        <button class="btn" onclick="saveAll()">💾 Save Watchlist</button>
+      <div class="title">🎟️ <span>FDFS</span> Radar</div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="pingStatus()">📱 Ping Phone</button>
+        <button class="btn btn-secondary btn-sm" onclick="testSiren()">🚨 Test Siren</button>
+        <button class="btn btn-sm" onclick="saveAll()">💾 Save</button>
       </div>
     </div>
 
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <h2 style="font-size: 18px; font-weight: 700;">Tracked Movies</h2>
+    <!-- Live Status Card -->
+    <div class="card" style="border-left: 4px solid var(--success); background: #162032;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="pulse-dot"></span>
+            <span style="font-weight: 800; font-size: 15px;">Live Radar: <span style="color: #34d399;">Scanning 24/7</span></span>
+          </div>
+          <div id="radar-meta" style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Connecting to radar scanner...</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="loadLiveStatus()">🔄 Refresh Status</button>
+      </div>
+      <div id="live-monitored-cards" style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;"></div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin: 20px 0 12px 0;">
+      <h2 style="font-size: 17px; font-weight: 700;">Monitored Movies & Filters</h2>
       <button class="btn btn-sm" onclick="addMovieCard()">➕ Add Movie</button>
     </div>
 
     <div id="movies-list"></div>
+  </div>
   </div>
 
   <div id="toast" class="toast">Saved successfully!</div>
@@ -217,6 +248,46 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       showToast('🚨 Test Siren sent! Check your phone.');
     }
 
+    async function pingStatus() {
+      await fetch('/api/ping-status', { method: 'POST' });
+      showToast('📱 Status summary dispatched to your phone!');
+    }
+
+    async function loadLiveStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        const meta = document.getElementById('radar-meta');
+        const cards = document.getElementById('live-monitored-cards');
+
+        if (!data.scan_round) {
+          meta.innerText = 'Radar is initializing first scan round in background...';
+          return;
+        }
+
+        meta.innerHTML = `Round <b>#${data.scan_round}</b> • Last checked: <b>${data.last_scan_time}</b> • <b>${data.movies_count || 0}</b> active target(s)`;
+
+        if (data.movies && data.movies.length > 0) {
+          cards.innerHTML = data.movies.map(m => `
+            <div style="background: #0f172a; border-radius: 8px; padding: 12px; border: 1px solid var(--border);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                <b style="font-size: 14px;">🎬 ${m.movie_name} <span style="font-weight: normal; color: var(--text-muted);">(${m.district})</span></b>
+                <span class="badge" style="${m.matched_shows_count > 0 ? 'background: rgba(225, 29, 72, 0.3); color: #fda4af;' : 'background: rgba(16, 185, 129, 0.2); color: #6ee7b7;'}">
+                  ${m.matched_shows_count > 0 ? '🔥 ' + m.matched_shows_count + ' SHOWS OPEN' : 'Scanning'}
+                </span>
+              </div>
+              <div style="font-size: 13px; line-height: 1.6;">
+                <div>🎟️ <b>BMS:</b> <a href="${m.bms_url}" target="_blank" style="color: #38bdf8; text-decoration: underline;">Open Link</a> — <span style="color: #cbd5e1;">${m.bms_status}</span></div>
+                <div>🎟️ <b>District:</b> <a href="${m.district_url}" target="_blank" style="color: #38bdf8; text-decoration: underline;">Open Link</a> — <span style="color: #cbd5e1;">${m.district_status}</span></div>
+              </div>
+            </div>
+          `).join('');
+        }
+      } catch (e) {
+        console.error('Error loading live status', e);
+      }
+    }
+
     function showToast(msg) {
       const toast = document.getElementById('toast');
       toast.innerText = msg;
@@ -225,6 +296,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     loadWatchlist();
+    loadLiveStatus();
+    setInterval(loadLiveStatus, 15000); // Auto-refresh status every 15s
   </script>
 </body>
 </html>
@@ -246,6 +319,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"status": "alive", "service": "fdfs-ticket-radar"}')
+
+        elif self.path == "/api/status":
+            data = {"is_running": True, "scan_round": 0, "last_scan_time": "Initializing...", "movies": []}
+            if Settings.STATUS_PATH.exists():
+                try:
+                    with open(Settings.STATUS_PATH, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                except Exception:
+                    pass
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode("utf-8"))
 
         elif self.path == "/api/watchlist":
             data = {"watchlist": []}
@@ -284,6 +370,39 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif self.path == "/api/test-siren":
             notifier = NtfyNotifier(Settings.NTFY_TOPIC)
             notifier.send_test_alert()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "ok"}')
+
+        elif self.path == "/api/ping-status":
+            data = {}
+            if Settings.STATUS_PATH.exists():
+                try:
+                    with open(Settings.STATUS_PATH, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                except Exception:
+                    pass
+            round_num = data.get("scan_round", 1)
+            last_time = data.get("last_scan_time", "Just now")
+            movies = [m.get("movie_name") for m in data.get("movies", [])]
+            body_text = f"Round #{round_num} at {last_time}.\nMonitoring: {', '.join(movies) or 'Active watchlist'}\nStatus: Radar scanning 24/7!"
+
+            try:
+                import httpx
+                httpx.post(
+                    f"https://ntfy.sh/{Settings.NTFY_TOPIC}",
+                    headers={
+                        "Title": f"Radar Status: Round #{round_num}",
+                        "Priority": "3",
+                        "Tags": "satellite,white_check_mark",
+                    },
+                    data=body_text.encode("utf-8"),
+                    timeout=5,
+                )
+            except Exception:
+                pass
+
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

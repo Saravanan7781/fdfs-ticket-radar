@@ -86,6 +86,7 @@ def run_radar():
             now_str = datetime.now().strftime("%H:%M:%S")
             print(f"\n[{now_str}] 🛰️  Round #{scan_round}: Scanning BookMyShow & District...")
 
+            round_summary = []
             for item in watchlist:
                 theatres_desc = ", ".join(item.target_theatres) if item.target_theatres else "ALL THEATRES in District"
                 fdfs_desc = f"FDFS only (<= {item.fdfs_max_time} AM)" if item.fdfs_only else "All Show Times"
@@ -129,6 +130,18 @@ def run_radar():
 
                 all_matches = bms_matched + dist_matched
 
+                round_summary.append({
+                    "movie_name": item.movie_name,
+                    "district": item.district,
+                    "target_theatres": item.target_theatres,
+                    "fdfs_only": item.fdfs_only,
+                    "bms_url": bms_url_disp,
+                    "bms_status": bms_status_disp,
+                    "district_url": dist_url_disp,
+                    "district_status": dist_status_disp,
+                    "matched_shows_count": len(all_matches),
+                })
+
                 for show in all_matches:
                     key = f"{item.id}:{show.platform}:{show.theatre_name}:{show.show_time}:{show.date}"
                     if key in alerted_keys:
@@ -160,6 +173,22 @@ def run_radar():
                         tele.send_fdfs_alert(alert)
 
                     alerted_keys.add(key)
+
+            # Update live status file for mobile dashboard
+            status_data = {
+                "is_running": True,
+                "scan_round": scan_round,
+                "last_scan_time": datetime.now().strftime("%I:%M:%S %p"),
+                "last_scan_timestamp": int(time.time()),
+                "movies_count": len(watchlist),
+                "movies": round_summary,
+            }
+            try:
+                Settings.STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+                with open(Settings.STATUS_PATH, "w", encoding="utf-8") as f:
+                    json.dump(status_data, f, indent=2)
+            except Exception as e:
+                logger.debug("Error writing status file: %s", e)
 
             # Calculate sleep with random human jitter
             sleep_time = Settings.POLL_INTERVAL_WAR_ROOM + random.randint(

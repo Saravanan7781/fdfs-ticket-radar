@@ -15,6 +15,7 @@ class Settings:
 
     BASE_DIR: Path = BASE_DIR
     WATCHLIST_PATH: Path = BASE_DIR / "config" / "watchlist.json"
+    STATUS_PATH: Path = BASE_DIR / "config" / "status.json"
 
     # Notification Channels
     # ntfy.sh is 100% free with no accounts required.
