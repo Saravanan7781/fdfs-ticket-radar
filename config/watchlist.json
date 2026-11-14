@@ -1,0 +1,19 @@
+{
+  "watchlist": [
+    {
+      "id": "coolie_chennai",
+      "movie_name": "Coolie",
+      "district": "Chennai",
+      "target_theatres": [
+        "Rohini Silver Screens",
+        "Vettri Theatres",
+        "AGS Cinemas",
+        "PVR"
+      ],
+      "target_date": "2026-05-01",
+      "fdfs_only": true,
+      "fdfs_max_time": "08:00",
+      "enabled": true
+    }
+  ]
+}
