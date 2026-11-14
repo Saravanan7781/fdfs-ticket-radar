@@ -149,9 +149,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               </div>
             </div>
 
-            <div class="form-group full-width">
-              <label>Direct BookMyShow / District URL (Optional)</label>
-              <input type="text" value="${item.bms_url || ''}" onchange="updateItem(${index}, 'bms_url', this.value)" placeholder="https://in.bookmyshow.com/... or https://www.district.in/...">
+            <div class="form-group">
+              <label>Direct BookMyShow URL (Optional)</label>
+              <input type="text" value="${item.bms_url || ''}" onchange="updateItem(${index}, 'bms_url', this.value)" placeholder="https://in.bookmyshow.com/movies/...">
+            </div>
+
+            <div class="form-group">
+              <label>Direct District URL (Optional)</label>
+              <input type="text" value="${item.district_url || ''}" onchange="updateItem(${index}, 'district_url', this.value)" placeholder="https://www.district.in/movies/...">
             </div>
           </div>
         </div>

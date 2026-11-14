@@ -87,15 +87,43 @@ def run_radar():
             print(f"\n[{now_str}] 🛰️  Round #{scan_round}: Scanning BookMyShow & District...")
 
             for item in watchlist:
-                logger.info("Scanning for '%s' in %s...", item.movie_name, item.district)
+                theatres_desc = ", ".join(item.target_theatres) if item.target_theatres else "ALL THEATRES in District"
+                fdfs_desc = f"FDFS only (<= {item.fdfs_max_time} AM)" if item.fdfs_only else "All Show Times"
+
+                print(f"\n   ┌─ 🎬 Tracking: '{item.movie_name}' ({item.district})")
+                print(f"   │  🎯 Filter: Theatres: [{theatres_desc}] | {fdfs_desc}")
 
                 # 1. Scan BookMyShow
                 bms_raw = bms.scan_shows(item)
                 bms_matched = FDFSDetector.filter_shows(bms_raw, item)
 
+                bms_url_disp = bms.last_url or f"https://in.bookmyshow.com/explore/movies-{item.district.lower()}"
+                if bms_matched:
+                    bms_status_disp = f"🔥 {len(bms_matched)} MATCHING SHOWS OPEN!"
+                elif bms_raw:
+                    bms_status_disp = f"⚠️ {len(bms_raw)} shows open in district, but 0 match target filter [{theatres_desc}]"
+                else:
+                    bms_status_disp = bms.last_status
+
+                print(f"   ├─ 🎟️ BookMyShow:")
+                print(f"   │  • Monitored URL: {bms_url_disp}")
+                print(f"   │  • Status:        {bms_status_disp}")
+
                 # 2. Scan District
                 dist_raw = district.scan_shows(item)
                 dist_matched = FDFSDetector.filter_shows(dist_raw, item)
+
+                dist_url_disp = district.last_url or "https://www.district.in/movies"
+                if dist_matched:
+                    dist_status_disp = f"🔥 {len(dist_matched)} MATCHING SHOWS OPEN!"
+                elif dist_raw:
+                    dist_status_disp = f"⚠️ {len(dist_raw)} shows open in district, but 0 match target filter [{theatres_desc}]"
+                else:
+                    dist_status_disp = district.last_status
+
+                print(f"   └─ 🎟️ District by Zomato:")
+                print(f"      • Monitored URL: {dist_url_disp}")
+                print(f"      • Status:        {dist_status_disp}")
 
                 all_matches = bms_matched + dist_matched
 

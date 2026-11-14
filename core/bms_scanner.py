@@ -21,6 +21,8 @@ class BMSScanner:
     def __init__(self, timeout: int = 15):
         self.timeout = timeout
         self.session: Optional[requests.Session] = None
+        self.last_url: str = ""
+        self.last_status: str = "Idle"
         self._init_warmed_session()
 
     def _init_warmed_session(self):
@@ -64,55 +66,62 @@ class BMSScanner:
         return mapping.get(city_clean, (city_clean, city_clean[:4]))
 
     def search_movie(self, movie_name: str, district: str) -> Optional[dict]:
-        """Search BMS explore page for a matching movie title and return URL/event code."""
+        """Search BMS explore and upcoming pages for a matching movie title and return URL/event code."""
         city_slug, city_code = self._normalize_city(district)
-        explore_url = f"{self.BASE_URL}/explore/movies-{city_slug}"
+        urls_to_check = [
+            f"{self.BASE_URL}/explore/movies-{city_slug}",
+            f"{self.BASE_URL}/explore/upcoming-movies-{city_slug}",
+        ]
+        target_clean = movie_name.strip().lower()
 
-        for attempt in range(2):
-            try:
-                resp = self.session.get(
-                    explore_url,
-                    impersonate="chrome120",
-                    timeout=self.timeout,
-                )
-                if resp.status_code == 403:
-                    logger.warning("BMS returned 403, refreshing session...")
-                    time.sleep(2)
-                    self._init_warmed_session()
-                    continue
+        for explore_url in urls_to_check:
+            for attempt in range(2):
+                try:
+                    resp = self.session.get(
+                        explore_url,
+                        impersonate="chrome120",
+                        timeout=self.timeout,
+                    )
+                    if resp.status_code == 403:
+                        logger.warning("BMS returned 403, refreshing session...")
+                        time.sleep(2)
+                        self._init_warmed_session()
+                        continue
 
-                if resp.status_code != 200:
-                    return None
+                    if resp.status_code != 200:
+                        break
 
-                soup = BeautifulSoup(resp.text, "html.parser")
-                target_clean = movie_name.strip().lower()
+                    soup = BeautifulSoup(resp.text, "html.parser")
 
-                links = soup.find_all("a", href=re.compile(r"/movies/"))
-                for a in links:
-                    link_text = a.get_text(strip=True).lower()
-                    href = a.get("href", "")
-                    if target_clean in link_text or target_clean in href.lower():
-                        full_url = href if href.startswith("http") else f"{self.BASE_URL}{href}"
-                        event_match = re.search(r"(ET\d+)", href)
-                        event_code = event_match.group(1) if event_match else None
+                    links = soup.find_all("a", href=re.compile(r"/movies/"))
+                    for a in links:
+                        link_text = a.get_text(strip=True).lower()
+                        href = a.get("href", "")
+                        if target_clean in link_text or target_clean in href.lower():
+                            full_url = href if href.startswith("http") else f"{self.BASE_URL}{href}"
+                            m = re.search(r"(?:/movies/)?(?:[^/]+/)*([^/]+)/(ET\d+)", full_url)
+                            if m:
+                                movie_slug = m.group(1)
+                                event_code = m.group(2)
+                            else:
+                                event_match = re.search(r"(ET\d+)", href)
+                                event_code = event_match.group(1) if event_match else None
+                                slug_match = re.search(r"/movies/([^/]+)/", href)
+                                movie_slug = slug_match.group(1) if slug_match else movie_name.lower().replace(" ", "-")
 
-                        # Extract movie slug
-                        slug_match = re.search(r"/movies/([^/]+)/", href)
-                        movie_slug = slug_match.group(1) if slug_match else movie_name.lower().replace(" ", "-")
+                            logger.info("Found BMS movie match: '%s' -> %s", movie_name, full_url)
+                            return {
+                                "title": a.get_text(strip=True),
+                                "url": full_url,
+                                "event_code": event_code,
+                                "movie_slug": movie_slug,
+                                "city_slug": city_slug,
+                                "city_code": city_code,
+                            }
+                    break
 
-                        logger.info("Found BMS movie: '%s' -> %s", movie_name, full_url)
-                        return {
-                            "title": a.get_text(strip=True),
-                            "url": full_url,
-                            "event_code": event_code,
-                            "movie_slug": movie_slug,
-                            "city_slug": city_slug,
-                            "city_code": city_code,
-                        }
-                break
-
-            except Exception as e:
-                logger.error("Error searching BMS for %s: %s", movie_name, e)
+                except Exception as e:
+                    logger.error("Error searching BMS for %s: %s", movie_name, e)
 
         return None
 
@@ -123,17 +132,29 @@ class BMSScanner:
         movie_slug = None
 
         if watch_item.bms_url:
-            code_match = re.search(r"(ET\d+)", watch_item.bms_url)
-            event_code = code_match.group(1) if code_match else None
-            slug_match = re.search(r"/movies/([^/]+)/", watch_item.bms_url)
-            movie_slug = slug_match.group(1) if slug_match else watch_item.movie_name.lower().replace(" ", "-")
+            self.last_url = watch_item.bms_url
+            m = re.search(r"(?:/movies/)?(?:[^/]+/)*([^/]+)/(ET\d+)", watch_item.bms_url)
+            if m:
+                movie_slug = m.group(1)
+                event_code = m.group(2)
+            else:
+                code_match = re.search(r"(ET\d+)", watch_item.bms_url)
+                event_code = code_match.group(1) if code_match else None
+                slug_match = re.search(r"/movies/([^/]+)/", watch_item.bms_url)
+                movie_slug = slug_match.group(1) if slug_match else watch_item.movie_name.lower().replace(" ", "-")
         else:
             movie_info = self.search_movie(watch_item.movie_name, watch_item.district)
             if movie_info:
+                self.last_url = movie_info["url"]
                 event_code = movie_info["event_code"]
                 movie_slug = movie_info["movie_slug"]
+            else:
+                self.last_url = f"{self.BASE_URL}/explore/movies-{city_slug}"
+                self.last_status = "⏳ Not Listed on BMS Yet (Scanning City Catalog)"
+                return []
 
         if not event_code or not movie_slug:
+            self.last_status = "⏳ Found Movie Page (Awaiting Showtimes)"
             return []
 
         # Construct buytickets URL
@@ -150,15 +171,18 @@ class BMSScanner:
                 self._init_warmed_session()
                 resp = self.session.get(buytickets_url, impersonate="chrome120", timeout=self.timeout)
 
-            if resp.status_code != 200:
-                logger.debug("BMS buytickets returned %d", resp.status_code)
+            # Update last_url to the actual resolved showtimes page if valid
+            if resp.status_code == 200:
+                self.last_url = resp.url or buytickets_url
+            elif resp.status_code == 404:
+                self.last_status = "⏳ Tickets Not Open Yet (Coming Soon / No Shows)"
                 return []
 
-            # Parse JSON __INITIAL_STATE__
             match = re.search(r"window\.__INITIAL_STATE__\s*=\s*(\{.*?\});\s*window\.", resp.text) or re.search(
                 r"window\.__INITIAL_STATE__\s*=\s*(\{.*?\});?\s*</script>", resp.text
             )
             if not match:
+                self.last_status = "⏳ Not Open Yet (Coming Soon / Interested)"
                 return []
 
             data = json.loads(match.group(1))
@@ -200,16 +224,20 @@ class BMSScanner:
                                                         show_time=show_time,
                                                         date=show_date or watch_item.target_date or "Today",
                                                         screen_format="2D",
-                                                        booking_url=resp.url or buytickets_url,
+                                                        booking_url=self.last_url,
                                                         platform="BookMyShow",
                                                         status=avail,
                                                     )
                                                 )
 
             if shows:
+                self.last_status = f"🔥 BOOKING OPEN ({len(shows)} shows found)"
                 logger.info("BMS parsed %d real shows for '%s' in %s", len(shows), watch_item.movie_name, watch_item.district)
+            else:
+                self.last_status = "⏳ Not Open Yet (No Showtimes Available)"
 
         except Exception as e:
+            self.last_status = f"Error scanning ({e})"
             logger.error("Error parsing BMS showtimes: %s", e)
 
         return shows

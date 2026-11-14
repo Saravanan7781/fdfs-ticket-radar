@@ -1,32 +1,15 @@
 {
   "watchlist": [
     {
-      "id": "coolie_chennai",
-      "movie_name": "Coolie",
-      "district": "Chennai",
-      "target_theatres": [
-        "Rohini Silver Screens",
-        "Vettri Theatres",
-        "AGS Cinemas",
-        "PVR"
-      ],
-      "target_date": "2026-05-01",
-      "fdfs_only": true,
-      "fdfs_max_time": "08:00",
-      "enabled": true
-    },
-    {
-      "id": "scene_coimbatore",
-      "movie_name": "Scene",
+      "id": "movie_1794685399566",
+      "movie_name": "O.M",
       "district": "Coimbatore",
       "target_theatres": [
-        "KG"
+        "KG Cinemas"
       ],
       "target_date": null,
-      "fdfs_only": true,
+      "fdfs_only": false,
       "fdfs_max_time": "08:00",
-      "bms_url": null,
-      "district_url": null,
       "enabled": true
     }
   ]

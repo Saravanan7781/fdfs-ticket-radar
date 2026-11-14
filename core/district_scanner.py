@@ -21,6 +21,8 @@ class DistrictScanner:
     def __init__(self, timeout: int = 15):
         self.timeout = timeout
         self.session = requests.Session()
+        self.last_url: str = ""
+        self.last_status: str = "Idle"
 
     def _normalize_city(self, city: str) -> str:
         """Convert common city/district names to District slug format."""
@@ -59,14 +61,11 @@ class DistrictScanner:
             soup = BeautifulSoup(resp.text, "html.parser")
             target_clean = movie_name.strip().lower()
 
-            # Find all links containing movie references
             links = soup.find_all("a", href=re.compile(r"/movies/.*-MV\d+", re.I))
             for a in links:
                 href = a.get("href", "")
                 text = a.get_text(strip=True).lower()
                 if target_clean in text or target_clean in href.lower():
-                    # Construct the city-specific URL e.g. /movies/scene-movie-tickets-in-coimbatore-MV233181
-                    # Remove any existing city injection or add it cleanly
                     base_slug = re.sub(r"-movie-tickets(-in-[a-z0-9-]+)?-MV", f"-movie-tickets-in-{city_slug}-MV", href)
                     full_url = base_slug if base_slug.startswith("http") else f"{self.BASE_URL}{base_slug}"
 
@@ -90,7 +89,8 @@ class DistrictScanner:
         if not movie_url:
             movie_info = self.search_movie(watch_item.movie_name, watch_item.district)
             if not movie_info:
-                logger.debug("Movie '%s' not listed on District yet in %s", watch_item.movie_name, watch_item.district)
+                self.last_url = f"{self.BASE_URL}/movies"
+                self.last_status = "⏳ Not Listed on District Yet (Scanning Catalog)"
                 return []
             movie_url = movie_info["url"]
 
@@ -98,6 +98,7 @@ class DistrictScanner:
         if f"-in-{city_slug}-" not in movie_url:
             movie_url = re.sub(r"-movie-tickets(-in-[a-z0-9-]+)?-MV", f"-movie-tickets-in-{city_slug}-MV", movie_url)
 
+        self.last_url = movie_url
         shows: List[Show] = []
 
         try:
@@ -107,7 +108,7 @@ class DistrictScanner:
                 timeout=self.timeout,
             )
             if resp.status_code != 200:
-                logger.debug("District city page status %d for %s", resp.status_code, movie_url)
+                self.last_status = f"⏳ Tickets Not Released Yet (HTTP {resp.status_code})"
                 return []
 
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -125,7 +126,6 @@ class DistrictScanner:
                         date_str = dt.strftime("%Y-%m-%d")
 
                         cinema_name = data.get("location", {}).get("name", "Unknown Cinema")
-                        locality = data.get("location", {}).get("address", {}).get("addressLocality", "")
 
                         shows.append(
                             Show(
@@ -142,9 +142,13 @@ class DistrictScanner:
                     continue
 
             if shows:
+                self.last_status = f"🔥 BOOKING OPEN ({len(shows)} shows found)"
                 logger.info("District parsed %d real shows for '%s' in %s", len(shows), watch_item.movie_name, watch_item.district)
+            else:
+                self.last_status = "⏳ Not Open Yet (Coming Soon / No Shows)"
 
         except Exception as e:
+            self.last_status = f"Error scanning ({e})"
             logger.error("Error parsing District shows for %s: %s", watch_item.movie_name, e)
 
         return shows

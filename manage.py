@@ -54,6 +54,14 @@ def prompt_movie_details(existing: dict = None) -> dict:
     fdfs_input = input(f"• FDFS Only (Morning shows <= 08:00 AM)? (Y/N) [{cur_fdfs}]: ").strip().upper()
     fdfs_only = (fdfs_input == "Y") if fdfs_input else ex.get("fdfs_only", True)
 
+    cur_bms = ex.get("bms_url") or "Auto-detect"
+    bms_in = input(f"• Direct BMS URL (Enter to keep) [{cur_bms}]: ").strip()
+    bms_url = bms_in if bms_in else ex.get("bms_url")
+
+    cur_dist = ex.get("district_url") or "Auto-detect"
+    dist_in = input(f"• Direct District URL (Enter to keep) [{cur_dist}]: ").strip()
+    district_url = dist_in if dist_in else ex.get("district_url")
+
     item_id = f"{name.lower().replace(' ', '_')}_{city.lower()}"
     return {
         "id": item_id,
@@ -63,8 +71,8 @@ def prompt_movie_details(existing: dict = None) -> dict:
         "target_date": target_date,
         "fdfs_only": fdfs_only,
         "fdfs_max_time": "08:00",
-        "bms_url": ex.get("bms_url"),
-        "district_url": ex.get("district_url"),
+        "bms_url": bms_url,
+        "district_url": district_url,
         "enabled": True,
     }
 
@@ -123,8 +131,13 @@ def list_movies():
         fdfs_str = "Early Morning FDFS (<= 8 AM)" if item.get("fdfs_only", True) else "All Shows"
         print(f"{i}. 🎬 {item.get('movie_name')} ({item.get('district')})")
         print(f"   🏛️ Theatres: {th}")
-        print(f"   ⏰ Timing: {fdfs_str}")
-        print(f"   📅 Date: {item.get('target_date') or 'Release Day'}\n")
+        print(f"   ⏰ Timing:   {fdfs_str}")
+        print(f"   📅 Date:     {item.get('target_date') or 'Release Day'}")
+        if item.get("bms_url"):
+            print(f"   🎟️ BMS URL:  {item.get('bms_url')}")
+        if item.get("district_url"):
+            print(f"   🎟️ Dist URL: {item.get('district_url')}")
+        print()
     print("=" * 60 + "\n")
 
 
