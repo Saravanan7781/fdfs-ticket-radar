@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  radar:
+    build: .
+    container_name: fdfs-ticket-radar
+    restart: always
+    ports:
+      - "5055:5055"
+    environment:
+      - PORT=5055
+      - NTFY_TOPIC=saravanan-fdfs-siren-7781
+    volumes:
+      - ./config:/app/config

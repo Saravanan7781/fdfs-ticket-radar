@@ -241,6 +241,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(HTML_TEMPLATE.encode("utf-8"))
 
+        elif self.path in ("/health", "/ping"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "alive", "service": "fdfs-ticket-radar"}')
+
         elif self.path == "/api/watchlist":
             data = {"watchlist": []}
             if Settings.WATCHLIST_PATH.exists():
@@ -291,19 +297,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
         pass  # Quiet logging
 
 
-def start_server(port: int = 5055):
+def start_server(port: int = None, open_browser: bool = True):
+    if port is None:
+        port = int(os.environ.get("PORT", "5055"))
     server = HTTPServer(("0.0.0.0", port), DashboardHandler)
     url = f"http://localhost:{port}"
     print("=" * 60)
     print("  🎟️  FDFS TICKET RADAR — WEB DASHBOARD")
     print("=" * 60)
-    print(f"👉 Opening Dashboard at: {url}")
-    print("   (You can also open this link on your phone if on same Wi-Fi)")
+    print(f"👉 Dashboard listening on: {url} (Port {port})")
+    print("   (Access remotely using your cloud domain or local IP)")
     print("=" * 60)
-    print("Press Ctrl+C to stop the dashboard server.\n")
 
-    # Open user's default browser automatically
-    threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    # Open local browser only in desktop environment
+    if open_browser and not os.environ.get("PORT"):
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
