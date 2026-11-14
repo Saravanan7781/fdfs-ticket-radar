@@ -15,5 +15,7 @@ services:
         value: "180"
       - key: ENABLE_PHONE_SIREN
         value: "true"
+      - key: TZ
+        value: "Asia/Kolkata"
       - key: PYTHON_VERSION
         value: "3.11.9"

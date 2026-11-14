@@ -5,9 +5,17 @@ import logging
 import random
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Set
+
+# Indian Standard Time (IST = UTC + 5:30)
+IST = timezone(timedelta(hours=5, minutes=30), name="IST")
+
+
+def get_now() -> datetime:
+    """Return current timestamp in Indian Standard Time."""
+    return datetime.now(IST)
 
 # Ensure project root is in sys.path
 BASE_DIR = Path(__file__).resolve().parent
@@ -83,7 +91,7 @@ def run_radar():
         while True:
             # Reload watchlist in case user modified it
             watchlist = load_watchlist()
-            now_str = datetime.now().strftime("%H:%M:%S")
+            now_str = get_now().strftime("%I:%M:%S %p IST")
             print(f"\n[{now_str}] 🛰️  Round #{scan_round}: Scanning BookMyShow & District...")
 
             round_summary = []
@@ -178,7 +186,7 @@ def run_radar():
             status_data = {
                 "is_running": True,
                 "scan_round": scan_round,
-                "last_scan_time": datetime.now().strftime("%I:%M:%S %p"),
+                "last_scan_time": get_now().strftime("%I:%M:%S %p IST"),
                 "last_scan_timestamp": int(time.time()),
                 "movies_count": len(watchlist),
                 "movies": round_summary,

@@ -4,6 +4,7 @@ FROM python:3.12-slim
 # Set environment
 ENV PYTHONUNBUFFERED=1
 ENV PORT=5055
+ENV TZ=Asia/Kolkata
 
 # Set working directory
 WORKDIR /app

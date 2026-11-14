@@ -265,7 +265,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           return;
         }
 
-        meta.innerHTML = `Round <b>#${data.scan_round}</b> • Last checked: <b>${data.last_scan_time}</b> • <b>${data.movies_count || 0}</b> active target(s)`;
+        let timeDisplay = data.last_scan_time || 'Just now';
+        if (data.last_scan_timestamp) {
+          const d = new Date(data.last_scan_timestamp * 1000);
+          const localTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+          const secAgo = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+          const agoStr = secAgo < 60 ? `${secAgo}s ago` : `${Math.floor(secAgo / 60)}m ago`;
+          timeDisplay = `${localTime} (${agoStr})`;
+        }
+
+        meta.innerHTML = `Round <b>#${data.scan_round}</b> • Last checked: <b>${timeDisplay}</b> • <b>${data.movies_count || 0}</b> active target(s)`;
 
         if (data.movies && data.movies.length > 0) {
           cards.innerHTML = data.movies.map(m => `
