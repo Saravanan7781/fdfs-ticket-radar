@@ -157,6 +157,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       color: white;
     }
     .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; }
+
+    /* FDFS Segmented Buttons */
+    .btn-fdfs-active {
+      background: #ff2a5f !important;
+      color: white !important;
+      border: 1px solid rgba(255, 42, 95, 0.6) !important;
+      box-shadow: 0 0 14px rgba(255, 42, 95, 0.45) !important;
+      font-weight: 700 !important;
+    }
+    .btn-all-active {
+      background: #00f2fe !important;
+      color: #070a13 !important;
+      border: 1px solid rgba(0, 242, 254, 0.6) !important;
+      box-shadow: 0 0 14px rgba(0, 242, 254, 0.45) !important;
+      font-weight: 800 !important;
+    }
+    .btn-fdfs-inactive {
+      background: rgba(30, 41, 59, 0.6) !important;
+      color: #94a3b8 !important;
+      border: 1px solid var(--border) !important;
+      box-shadow: none !important;
+      font-weight: 500 !important;
+    }
     
     /* Telemetry / Hero Command Bar */
     .telemetry-card {
@@ -342,9 +365,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border: 1px solid rgba(255, 42, 95, 0.3);
     }
     .pill-all {
-      background: rgba(59, 130, 246, 0.15);
-      color: #93c5fd;
-      border: 1px solid rgba(59, 130, 246, 0.3);
+      background: rgba(0, 242, 254, 0.15);
+      color: var(--cyan);
+      border: 1px solid rgba(0, 242, 254, 0.3);
     }
     
     /* Platform Deck */
@@ -560,24 +583,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border-color: var(--cyan);
       box-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
     }
-    .toggle-container {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-top: 4px;
-    }
-    .toggle { position: relative; width: 44px; height: 24px; }
-    .toggle input { opacity: 0; width: 0; height: 0; }
-    .slider {
-      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-      background: #334155; border-radius: 24px; transition: 0.25s;
-    }
-    .slider:before {
-      position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
-      background: white; border-radius: 50%; transition: 0.25s;
-    }
-    input:checked + .slider { background: var(--success); }
-    input:checked + .slider:before { transform: translateX(20px); }
     
     /* Terminal Console Drawer */
     .terminal-card {
@@ -770,6 +775,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     let radarStatus = null;
     let nextCheckSeconds = 45;
     let countdownInterval = null;
+    const openDrawers = new Set(); // Tracks open edit drawers so they never close unexpectedly!
 
     async function loadWatchlist() {
       try {
@@ -797,23 +803,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     function updateTelemetryUI() {
       if (!radarStatus) return;
 
-      document.getElementById('tele-round').innerText = radarStatus.scan_round || 1;
+      const roundEl = document.getElementById('tele-round');
+      if (roundEl) roundEl.innerText = radarStatus.scan_round || 1;
 
-      // Calculate time ago and countdown
+      // Calculate time ago
       if (radarStatus.last_scan_timestamp) {
         const d = new Date(radarStatus.last_scan_timestamp * 1000);
         const localTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
         const secAgo = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
         const agoStr = secAgo < 60 ? `${secAgo}s ago` : `${Math.floor(secAgo / 60)}m ago`;
-        document.getElementById('last-checked-time').innerText = `Last: ${localTime} (${agoStr})`;
+        const lastEl = document.getElementById('last-checked-time');
+        if (lastEl) lastEl.innerText = `Last: ${localTime} (${agoStr})`;
       }
 
       // Next check countdown
       if (radarStatus.next_scan_timestamp) {
-        const remaining = Math.max(0, Math.floor(radarStatus.next_scan_timestamp - (Date.now() / 1000)));
-        nextCheckSeconds = remaining;
-      } else {
-        nextCheckSeconds = 45;
+        nextCheckSeconds = Math.max(0, Math.floor(radarStatus.next_scan_timestamp - (Date.now() / 1000)));
       }
 
       // Check matches count
@@ -824,24 +829,57 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       const matchVal = document.getElementById('stats-matches-count');
       const statusText = document.getElementById('stats-status-text');
-      if (totalMatches > 0) {
-        matchVal.innerHTML = `<span style="color: #ff2a5f;">🔥 ${totalMatches} SHOWS</span>`;
-        statusText.innerText = 'TICKETS AVAILABLE!';
-      } else {
-        matchVal.innerHTML = `<span style="color: #10b981;">0 Live</span>`;
-        statusText.innerText = 'Scanning catalog...';
+      if (matchVal && statusText) {
+        if (totalMatches > 0) {
+          matchVal.innerHTML = `<span style="color: #ff2a5f;">🔥 ${totalMatches} SHOWS</span>`;
+          statusText.innerText = 'TICKETS AVAILABLE!';
+        } else {
+          matchVal.innerHTML = `<span style="color: #10b981;">0 Live</span>`;
+          statusText.innerText = 'Scanning catalog...';
+        }
       }
 
       // Render terminal logs
       renderTerminalLogs(radarStatus.recent_logs || []);
 
-      // Update targets cards with live status
-      render();
+      // In-place update of status cards WITHOUT destroying open edit drawers or inputs!
+      if (radarStatus.movies) {
+        radarStatus.movies.forEach(m => {
+          const item = watchlist.find(w => (w.movie_name || '').toLowerCase().trim() === (m.movie_name || '').toLowerCase().trim());
+          if (item) {
+            const bmsStatusEl = document.getElementById(`bms-status-text-${item.id}`);
+            const bmsBadgeEl = document.getElementById(`bms-badge-${item.id}`);
+            const bmsLinkEl = document.getElementById(`bms-link-${item.id}`);
+
+            if (bmsStatusEl) bmsStatusEl.innerText = m.bms_status || 'Scanning...';
+            if (bmsBadgeEl) {
+              const isOpen = (m.bms_status || '').includes('OPEN');
+              const isWarn = (m.bms_status || '').includes('⚠️');
+              bmsBadgeEl.className = `platform-badge ${isOpen ? 'status-open' : (isWarn ? 'status-partial' : 'status-closed')}`;
+              bmsBadgeEl.innerText = isOpen ? '🔥 OPEN' : (isWarn ? '⚠️ PARTIAL' : '⏳ CLOSED');
+            }
+            if (bmsLinkEl && m.bms_url) bmsLinkEl.href = m.bms_url;
+
+            const distStatusEl = document.getElementById(`dist-status-text-${item.id}`);
+            const distBadgeEl = document.getElementById(`dist-badge-${item.id}`);
+            const distLinkEl = document.getElementById(`dist-link-${item.id}`);
+
+            if (distStatusEl) distStatusEl.innerText = m.district_status || 'Scanning...';
+            if (distBadgeEl) {
+              const isOpen = (m.district_status || '').includes('OPEN');
+              const isWarn = (m.district_status || '').includes('⚠️');
+              distBadgeEl.className = `platform-badge ${isOpen ? 'status-open' : (isWarn ? 'status-partial' : 'status-closed')}`;
+              distBadgeEl.innerText = isOpen ? '🔥 OPEN' : (isWarn ? '⚠️ PARTIAL' : '⏳ CLOSED');
+            }
+            if (distLinkEl && m.district_url) distLinkEl.href = m.district_url;
+          }
+        });
+      }
     }
 
     function renderTerminalLogs(logs) {
       const body = document.getElementById('terminal-logs-body');
-      if (!logs || logs.length === 0) return;
+      if (!logs || logs.length === 0 || !body) return;
 
       body.innerHTML = logs.map(l => `
         <div class="log-line">
@@ -856,6 +894,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (countdownInterval) clearInterval(countdownInterval);
       countdownInterval = setInterval(() => {
         const el = document.getElementById('countdown-val');
+        if (!el) return;
         if (nextCheckSeconds > 0) {
           nextCheckSeconds--;
           el.innerText = `${nextCheckSeconds}s`;
@@ -867,6 +906,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     function render() {
       const container = document.getElementById('movies-list');
+      if (!container) return;
+
       if (watchlist.length === 0) {
         container.innerHTML = `
           <div class="target-card" style="text-align: center; color: var(--text-muted); padding: 45px;">
@@ -887,7 +928,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         });
       }
 
-      container.innerHTML = watchlist.map((item, index) => {
+      container.innerHTML = watchlist.map((item) => {
         const mKey = (item.movie_name || '').toLowerCase().trim();
         const live = statusMap[mKey] || {};
 
@@ -897,26 +938,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const distUrl = live.district_url || item.district_url || `https://www.district.in/movies`;
         const matchedShows = live.matched_shows_list || [];
 
-        // Determine badge styles
         const bmsBadgeClass = bmsStatus.includes('OPEN') ? 'status-open' : (bmsStatus.includes('⚠️') ? 'status-partial' : 'status-closed');
         const distBadgeClass = distStatus.includes('OPEN') ? 'status-open' : (distStatus.includes('⚠️') ? 'status-partial' : 'status-closed');
 
+        const isOpen = openDrawers.has(item.id);
+
         return `
-          <div class="target-card">
+          <div class="target-card" id="card-${item.id}">
             <!-- Header -->
             <div class="target-header">
               <div class="target-title-box">
                 <span style="font-size: 20px;">🎬</span>
-                <span class="target-movie-name">${item.movie_name || 'Untitled Movie'}</span>
-                <span class="pill pill-city">${item.district || 'All Districts'}</span>
-                <span class="pill ${item.fdfs_only !== false ? 'pill-fdfs' : 'pill-all'}">
+                <span class="target-movie-name" id="title-text-${item.id}">${item.movie_name || 'Untitled Movie'}</span>
+                <span class="pill pill-city" id="pill-city-${item.id}">${item.district || 'All Districts'}</span>
+                <span class="pill ${item.fdfs_only !== false ? 'pill-fdfs' : 'pill-all'}" id="pill-fdfs-${item.id}">
                   ${item.fdfs_only !== false ? '⚡ FDFS (≤ 08:00 AM)' : '⏰ Any Time'}
                 </span>
-                ${item.target_date ? `<span class="pill pill-city">📅 ${item.target_date}</span>` : ''}
+                ${item.target_date ? `<span class="pill pill-city" id="pill-date-${item.id}">📅 ${item.target_date}</span>` : ''}
               </div>
               <div style="display: flex; gap: 6px; align-items: center;">
-                <button class="btn btn-secondary btn-sm" onclick="toggleEdit(${index})">⚙️ Edit</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteMovie(${index})">🗑️</button>
+                <button class="btn btn-secondary btn-sm" id="btn-edit-${item.id}" onclick="toggleEdit('${item.id}')">
+                  ${isOpen ? '▲ Close' : '⚙️ Edit'}
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="deleteMovie('${item.id}')">🗑️</button>
               </div>
             </div>
 
@@ -926,10 +970,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <div class="platform-box">
                 <div class="platform-header">
                   <span class="platform-name">🎟️ BookMyShow</span>
-                  <span class="platform-badge ${bmsBadgeClass}">${bmsStatus.includes('OPEN') ? '🔥 OPEN' : (bmsStatus.includes('⚠️') ? '⚠️ PARTIAL' : '⏳ CLOSED')}</span>
+                  <span class="platform-badge ${bmsBadgeClass}" id="bms-badge-${item.id}">${bmsStatus.includes('OPEN') ? '🔥 OPEN' : (bmsStatus.includes('⚠️') ? '⚠️ PARTIAL' : '⏳ CLOSED')}</span>
                 </div>
-                <div class="platform-status-text">${bmsStatus}</div>
-                <a href="${bmsUrl}" target="_blank" class="platform-link-btn">
+                <div class="platform-status-text" id="bms-status-text-${item.id}">${bmsStatus}</div>
+                <a href="${bmsUrl}" id="bms-link-${item.id}" target="_blank" class="platform-link-btn">
                   🔗 Open BookMyShow Target Page &rarr;
                 </a>
               </div>
@@ -938,10 +982,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <div class="platform-box">
                 <div class="platform-header">
                   <span class="platform-name">🎟️ District by Zomato</span>
-                  <span class="platform-badge ${distBadgeClass}">${distStatus.includes('OPEN') ? '🔥 OPEN' : (distStatus.includes('⚠️') ? '⚠️ PARTIAL' : '⏳ CLOSED')}</span>
+                  <span class="platform-badge ${distBadgeClass}" id="dist-badge-${item.id}">${distStatus.includes('OPEN') ? '🔥 OPEN' : (distStatus.includes('⚠️') ? '⚠️ PARTIAL' : '⏳ CLOSED')}</span>
                 </div>
-                <div class="platform-status-text">${distStatus}</div>
-                <a href="${distUrl}" target="_blank" class="platform-link-btn">
+                <div class="platform-status-text" id="dist-status-text-${item.id}">${distStatus}</div>
+                <a href="${distUrl}" id="dist-link-${item.id}" target="_blank" class="platform-link-btn">
                   🔗 Open District Target Page &rarr;
                 </a>
               </div>
@@ -950,13 +994,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <!-- Theatres & Active Matcher -->
             <div class="filter-summary-bar">
               <span style="color: var(--text-muted); font-weight: 700;">THEATRES:</span>
-              ${(item.target_theatres && item.target_theatres.length > 0)
-                ? item.target_theatres.map(t => `<span class="theatre-chip">${t}</span>`).join('')
-                : '<span class="theatre-chip" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7;">ALL THEATRES in District</span>'}
+              <span id="theatres-chips-${item.id}" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                ${(item.target_theatres && item.target_theatres.length > 0)
+                  ? item.target_theatres.map(t => `<span class="theatre-chip">${t}</span>`).join('')
+                  : '<span class="theatre-chip" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7;">ALL THEATRES in District</span>'}
+              </span>
               
               <span style="margin-left: auto; color: var(--text-dim); display: flex; align-items: center; gap: 4px;">
                 <span>🔍</span>
-                <span class="regex-chip">
+                <span class="regex-chip" id="regex-chip-${item.id}">
                   ${item.movie_regex ? `/${item.movie_regex}/i` : `Auto: /${(item.movie_name || '').replace(/\\s+/g, '[\\\\s\\\\.\\\\-_]*')}/i`}
                 </span>
               </span>
@@ -984,62 +1030,98 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             ` : ''}
 
             <!-- Collapsible Edit Drawer -->
-            <div id="edit-drawer-${index}" class="edit-drawer">
+            <div id="edit-drawer-${item.id}" class="edit-drawer ${isOpen ? 'open' : ''}">
               <div class="form-grid">
                 <div class="form-group">
                   <label>Movie Name / Title</label>
-                  <input type="text" value="${item.movie_name || ''}" onchange="updateItem(${index}, 'movie_name', this.value)" placeholder="e.g. Coolie, O.M, Scene">
+                  <input type="text" 
+                         value="${item.movie_name || ''}" 
+                         oninput="updateMovieField('${item.id}', 'movie_name', this.value)" 
+                         placeholder="e.g. Coolie, O.M, Scene">
                 </div>
 
                 <div class="form-group">
                   <label>Custom Movie Regex (Optional)</label>
-                  <input type="text" value="${item.movie_regex || ''}" onchange="updateItem(${index}, 'movie_regex', this.value)" placeholder="e.g. O\\.?M.*, Thalapathy\\s*(69|T69)">
+                  <input type="text" 
+                         value="${item.movie_regex || ''}" 
+                         oninput="updateMovieField('${item.id}', 'movie_regex', this.value)" 
+                         placeholder="e.g. O\\.?M.*, Thalapathy\\s*(69|T69)">
                 </div>
 
                 <div class="form-group">
                   <label>District / City</label>
-                  <input type="text" value="${item.district || ''}" onchange="updateItem(${index}, 'district', this.value)" placeholder="e.g. Chennai, Coimbatore, Madurai">
+                  <input type="text" 
+                         value="${item.district || ''}" 
+                         oninput="updateMovieField('${item.id}', 'district', this.value)" 
+                         placeholder="e.g. Chennai, Coimbatore, Madurai">
                 </div>
 
                 <div class="form-group">
                   <label>Release Date (Optional)</label>
-                  <input type="text" value="${item.target_date || ''}" onchange="updateItem(${index}, 'target_date', this.value)" placeholder="YYYY-MM-DD or leave blank">
+                  <input type="text" 
+                         value="${item.target_date || ''}" 
+                         oninput="updateMovieField('${item.id}', 'target_date', this.value)" 
+                         placeholder="YYYY-MM-DD or leave blank">
                 </div>
 
                 <div class="form-group full-width">
                   <label>Target Theatres (comma-separated, or 'all')</label>
-                  <input type="text" value="${(item.target_theatres || []).join(', ')}" onchange="updateTheatres(${index}, this.value)" placeholder="e.g. Rohini, Vettri, AGS, KG Cinemas">
+                  <input type="text" 
+                         id="theatres-input-${item.id}"
+                         value="${(item.target_theatres || []).join(', ')}" 
+                         oninput="updateTheatresField('${item.id}', this.value)" 
+                         placeholder="e.g. Rohini, Vettri, AGS, KG Cinemas">
                   <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
                     <span style="font-size: 11px; color: var(--text-dim);">Quick Add:</span>
-                    <a href="javascript:void(0)" onclick="appendTheatre(${index}, 'Rohini Silver Screens')" class="theatre-chip">+ Rohini</a>
-                    <a href="javascript:void(0)" onclick="appendTheatre(${index}, 'Vettri Theatres')" class="theatre-chip">+ Vettri</a>
-                    <a href="javascript:void(0)" onclick="appendTheatre(${index}, 'AGS Cinemas')" class="theatre-chip">+ AGS</a>
-                    <a href="javascript:void(0)" onclick="appendTheatre(${index}, 'KG Cinemas')" class="theatre-chip">+ KG Cinemas</a>
-                    <a href="javascript:void(0)" onclick="appendTheatre(${index}, 'PVR')" class="theatre-chip">+ PVR</a>
-                    <a href="javascript:void(0)" onclick="appendTheatre(${index}, 'Miraj')" class="theatre-chip">+ Miraj</a>
+                    <a href="javascript:void(0)" onclick="appendTheatre('${item.id}', 'Rohini Silver Screens')" class="theatre-chip">+ Rohini</a>
+                    <a href="javascript:void(0)" onclick="appendTheatre('${item.id}', 'Vettri Theatres')" class="theatre-chip">+ Vettri</a>
+                    <a href="javascript:void(0)" onclick="appendTheatre('${item.id}', 'AGS Cinemas')" class="theatre-chip">+ AGS</a>
+                    <a href="javascript:void(0)" onclick="appendTheatre('${item.id}', 'KG Cinemas')" class="theatre-chip">+ KG Cinemas</a>
+                    <a href="javascript:void(0)" onclick="appendTheatre('${item.id}', 'PVR')" class="theatre-chip">+ PVR</a>
+                    <a href="javascript:void(0)" onclick="appendTheatre('${item.id}', 'Miraj')" class="theatre-chip">+ Miraj</a>
                   </div>
                 </div>
 
-                <div class="form-group">
-                  <label>FDFS Early Morning Filter</label>
-                  <div class="toggle-container">
-                    <label class="toggle">
-                      <input type="checkbox" ${item.fdfs_only !== false ? 'checked' : ''} onchange="updateItem(${index}, 'fdfs_only', this.checked)">
-                      <span class="slider"></span>
-                    </label>
-                    <span style="font-size: 13px; font-weight: 600;">Early Morning Shows (≤ 08:00 AM)</span>
+                <!-- 100% Reliable FDFS Segmented Buttons -->
+                <div class="form-group full-width">
+                  <label>Timing / Show Filter</label>
+                  <div style="display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
+                    <button type="button" 
+                            id="fdfs-btn-on-${item.id}"
+                            class="btn btn-sm ${item.fdfs_only !== false ? 'btn-fdfs-active' : 'btn-fdfs-inactive'}" 
+                            onclick="setFDFSOption('${item.id}', true)">
+                      ⚡ Early Morning FDFS (≤ 08:00 AM)
+                    </button>
+                    <button type="button" 
+                            id="fdfs-btn-off-${item.id}"
+                            class="btn btn-sm ${item.fdfs_only === false ? 'btn-all-active' : 'btn-fdfs-inactive'}" 
+                            onclick="setFDFSOption('${item.id}', false)">
+                      ⏰ All Shows (Any Time of Day)
+                    </button>
                   </div>
                 </div>
 
                 <div class="form-group">
                   <label>Direct BMS URL (Optional)</label>
-                  <input type="text" value="${item.bms_url || ''}" onchange="updateItem(${index}, 'bms_url', this.value)" placeholder="https://in.bookmyshow.com/movies/...">
+                  <input type="text" 
+                         value="${item.bms_url || ''}" 
+                         oninput="updateMovieField('${item.id}', 'bms_url', this.value)" 
+                         placeholder="https://in.bookmyshow.com/movies/...">
                 </div>
 
-                <div class="form-group full-width">
+                <div class="form-group">
                   <label>Direct District URL (Optional)</label>
-                  <input type="text" value="${item.district_url || ''}" onchange="updateItem(${index}, 'district_url', this.value)" placeholder="https://www.district.in/movies/...">
+                  <input type="text" 
+                         value="${item.district_url || ''}" 
+                         oninput="updateMovieField('${item.id}', 'district_url', this.value)" 
+                         placeholder="https://www.district.in/movies/...">
                 </div>
+              </div>
+
+              <!-- Drawer Bottom Actions -->
+              <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleEdit('${item.id}')">Cancel</button>
+                <button type="button" class="btn btn-sm" style="background: var(--emerald); box-shadow: 0 4px 12px var(--emerald-glow);" onclick="doneAndSave('${item.id}')">✅ Done & Save</button>
               </div>
             </div>
           </div>
@@ -1047,41 +1129,123 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }).join('');
     }
 
-    function toggleEdit(index) {
-      const drawer = document.getElementById(`edit-drawer-${index}`);
-      if (drawer) {
-        drawer.classList.toggle('open');
-      }
-    }
-
-    function updateItem(index, key, value) {
-      watchlist[index][key] = value;
-      if (key === 'movie_name' || key === 'district') {
-        render();
-      }
-    }
-
-    function updateTheatres(index, text) {
-      if (!text || text.trim().toLowerCase() === 'all') {
-        watchlist[index].target_theatres = [];
+    function toggleEdit(id) {
+      const drawer = document.getElementById(`edit-drawer-${id}`);
+      const btn = document.getElementById(`btn-edit-${id}`);
+      if (!drawer) return;
+      if (openDrawers.has(id)) {
+        openDrawers.delete(id);
+        drawer.classList.remove('open');
+        if (btn) btn.innerHTML = '⚙️ Edit';
       } else {
-        watchlist[index].target_theatres = text.split(',').map(s => s.trim()).filter(Boolean);
+        openDrawers.add(id);
+        drawer.classList.add('open');
+        if (btn) btn.innerHTML = '▲ Close';
       }
-      render();
     }
 
-    function appendTheatre(index, theatre) {
-      if (!watchlist[index].target_theatres) watchlist[index].target_theatres = [];
-      if (!watchlist[index].target_theatres.includes(theatre)) {
-        watchlist[index].target_theatres.push(theatre);
-        render();
-        toggleEdit(index); // Keep drawer open
+    function doneAndSave(id) {
+      openDrawers.delete(id);
+      const drawer = document.getElementById(`edit-drawer-${id}`);
+      const btn = document.getElementById(`btn-edit-${id}`);
+      if (drawer) drawer.classList.remove('open');
+      if (btn) btn.innerHTML = '⚙️ Edit';
+      saveAll();
+    }
+
+    function updateMovieField(id, field, value) {
+      const item = watchlist.find(w => w.id === id);
+      if (!item) return;
+      item[field] = value;
+
+      // Real-time title updates without re-rendering or closing drawers!
+      if (field === 'movie_name') {
+        const titleEl = document.getElementById(`title-text-${id}`);
+        if (titleEl) titleEl.innerText = value || 'Untitled Movie';
+        const regexChip = document.getElementById(`regex-chip-${id}`);
+        if (regexChip && !item.movie_regex) {
+          regexChip.innerText = `Auto: /${(value || '').replace(/\\s+/g, '[\\\\s\\\\.\\\\-_]*')}/i`;
+        }
+      } else if (field === 'district') {
+        const cityEl = document.getElementById(`pill-city-${id}`);
+        if (cityEl) cityEl.innerText = value || 'All Districts';
+      } else if (field === 'movie_regex') {
+        const regexChip = document.getElementById(`regex-chip-${id}`);
+        if (regexChip) {
+          regexChip.innerText = value ? `/${value}/i` : `Auto: /${(item.movie_name || '').replace(/\\s+/g, '[\\\\s\\\\.\\\\-_]*')}/i`;
+        }
+      }
+    }
+
+    function setFDFSOption(id, isFDFS) {
+      const item = watchlist.find(w => w.id === id);
+      if (!item) return;
+      item.fdfs_only = isFDFS;
+
+      // Visually toggle buttons immediately with active styling
+      const btnOn = document.getElementById(`fdfs-btn-on-${id}`);
+      const btnOff = document.getElementById(`fdfs-btn-off-${id}`);
+      if (btnOn && btnOff) {
+        if (isFDFS) {
+          btnOn.className = 'btn btn-sm btn-fdfs-active';
+          btnOff.className = 'btn btn-sm btn-fdfs-inactive';
+        } else {
+          btnOn.className = 'btn btn-sm btn-fdfs-inactive';
+          btnOff.className = 'btn btn-sm btn-all-active';
+        }
+      }
+
+      // Update card title pill
+      const pill = document.getElementById(`pill-fdfs-${id}`);
+      if (pill) {
+        if (isFDFS) {
+          pill.className = 'pill pill-fdfs';
+          pill.innerText = '⚡ FDFS (≤ 08:00 AM)';
+        } else {
+          pill.className = 'pill pill-all';
+          pill.innerText = '⏰ Any Time (All Day)';
+        }
+      }
+      showToast(isFDFS ? 'Set to: Early Morning FDFS Only' : 'Set to: All Show Times (Any Time)');
+    }
+
+    function updateTheatresField(id, text) {
+      const item = watchlist.find(w => w.id === id);
+      if (!item) return;
+      if (!text || text.trim().toLowerCase() === 'all') {
+        item.target_theatres = [];
+      } else {
+        item.target_theatres = text.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      updateTheatresDisplay(id, item.target_theatres);
+    }
+
+    function appendTheatre(id, theatre) {
+      const item = watchlist.find(w => w.id === id);
+      if (!item) return;
+      if (!item.target_theatres) item.target_theatres = [];
+      if (!item.target_theatres.includes(theatre)) {
+        item.target_theatres.push(theatre);
+        const input = document.getElementById(`theatres-input-${id}`);
+        if (input) input.value = item.target_theatres.join(', ');
+        updateTheatresDisplay(id, item.target_theatres);
+      }
+    }
+
+    function updateTheatresDisplay(id, list) {
+      const container = document.getElementById(`theatres-chips-${id}`);
+      if (!container) return;
+      if (list && list.length > 0) {
+        container.innerHTML = list.map(t => `<span class="theatre-chip">${t}</span>`).join('');
+      } else {
+        container.innerHTML = `<span class="theatre-chip" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7;">ALL THEATRES in District</span>`;
       }
     }
 
     function addMovieCard(preset = null) {
+      const newId = 'movie_' + Date.now();
       const newItem = preset || {
-        id: 'movie_' + Date.now(),
+        id: newId,
         movie_name: '',
         movie_regex: null,
         district: 'Chennai',
@@ -1091,9 +1255,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         fdfs_max_time: '08:00',
         enabled: true
       };
+      if (preset) newItem.id = newId;
+
       watchlist.unshift(newItem);
+      openDrawers.add(newId); // Keep the new card's edit drawer open!
+      document.getElementById('target-count-badge').innerText = watchlist.length;
+      document.getElementById('stats-movies-count').innerText = `${watchlist.length} Titles`;
       render();
-      toggleEdit(0); // Open editor immediately
     }
 
     function showPresetModal() {
@@ -1108,7 +1276,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
       if (choice === "1") {
         addMovieCard({
-          id: 'coolie_' + Date.now(),
           movie_name: 'Coolie',
           movie_regex: 'Coolie.*',
           district: 'Chennai',
@@ -1119,7 +1286,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         });
       } else if (choice === "2") {
         addMovieCard({
-          id: 't69_' + Date.now(),
           movie_name: 'Thalapathy 69',
           movie_regex: 'Thalapathy\\\\s*(?:69|T69)',
           district: 'Chennai',
@@ -1130,7 +1296,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         });
       } else if (choice === "3") {
         addMovieCard({
-          id: 'gbu_' + Date.now(),
           movie_name: 'Good Bad Ugly',
           movie_regex: 'Good[\\\\s\\\\.\\\\-_]*Bad[\\\\s\\\\.\\\\-_]*Ugly',
           district: 'Chennai',
@@ -1141,7 +1306,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         });
       } else if (choice === "4") {
         addMovieCard({
-          id: 'scene_' + Date.now(),
           movie_name: 'Scene',
           movie_regex: 'Scene',
           district: 'Coimbatore',
@@ -1153,9 +1317,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
     }
 
-    function deleteMovie(index) {
-      if (confirm(`Remove "${watchlist[index].movie_name || 'this movie'}" from radar?`)) {
-        watchlist.splice(index, 1);
+    function deleteMovie(id) {
+      const item = watchlist.find(w => w.id === id);
+      if (confirm(`Remove "${item?.movie_name || 'this movie'}" from radar?`)) {
+        openDrawers.delete(id);
+        watchlist = watchlist.filter(w => w.id !== id);
+        document.getElementById('target-count-badge').innerText = watchlist.length;
+        document.getElementById('stats-movies-count').innerText = `${watchlist.length} Titles`;
         render();
         saveAll();
       }
@@ -1170,7 +1338,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         setTimeout(async () => {
           await loadLiveStatus();
           if (btn) btn.innerText = '⚡ Scan Now';
-        }, 2500);
+        }, 2200);
       } catch (e) {
         showToast('Error triggering scan');
         if (btn) btn.innerText = '⚡ Scan Now';
@@ -1198,11 +1366,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     function toggleTerminal() {
       const el = document.getElementById('terminal-logs-body');
-      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+      if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+      }
     }
 
     function showToast(msg) {
       const toast = document.getElementById('toast');
+      if (!toast) return;
       toast.innerText = msg;
       toast.style.display = 'block';
       setTimeout(() => { toast.style.display = 'none'; }, 3200);
