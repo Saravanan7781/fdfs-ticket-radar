@@ -70,14 +70,17 @@ class DistrictScanner:
             links = soup.find_all("a", href=re.compile(r"/movies/.*-MV\d+", re.I))
             for a in links:
                 href = a.get("href", "")
-                text = a.get_text(separator=" ", strip=True)
-                if pat.search(text) or pat.search(href):
+                # Extract first line of text (actual movie title) rather than full synopsis paragraphs
+                lines = [line.strip() for line in a.get_text(separator="\n", strip=True).split("\n") if line.strip()]
+                title_line = lines[0] if lines else ""
+
+                if pat.search(title_line) or pat.search(href):
                     base_slug = re.sub(r"-movie-tickets(-in-[a-z0-9-]+)?-MV", f"-movie-tickets-in-{city_slug}-MV", href)
                     full_url = base_slug if base_slug.startswith("http") else f"{self.BASE_URL}{base_slug}"
 
-                    logger.info("Found District movie regex match: '%s' (matched '%s') -> %s", movie_display_name, text, full_url)
+                    logger.info("Found District movie regex match: '%s' (matched '%s') -> %s", movie_display_name, title_line, full_url)
                     return {
-                        "title": text,
+                        "title": title_line,
                         "url": full_url,
                         "city_slug": city_slug,
                     }
@@ -121,10 +124,11 @@ class DistrictScanner:
 
             # Parse all schema.org ScreeningEvent blocks for 100% accurate showtimes & venues
             for sc in soup.find_all("script", type="application/ld+json"):
-                if not sc.string:
+                sc_text = sc.string or sc.text or ""
+                if not sc_text.strip():
                     continue
                 try:
-                    data = json.loads(sc.string)
+                    data = json.loads(sc_text)
                     if data.get("@type") == "ScreeningEvent":
                         start_iso = data.get("startDate", "")
                         dt = datetime.fromisoformat(start_iso)

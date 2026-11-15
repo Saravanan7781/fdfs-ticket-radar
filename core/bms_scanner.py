@@ -99,6 +99,30 @@ class BMSScanner:
 
                     soup = BeautifulSoup(resp.text, "html.parser")
 
+                    # 1. Check Schema.org ItemList JSON-LD blocks (most accurate catalog)
+                    for sc in soup.find_all("script"):
+                        sc_text = sc.string or sc.text or ""
+                        if "ItemList" in sc_text and "itemListElement" in sc_text:
+                            try:
+                                ld_data = json.loads(sc_text)
+                                for it in ld_data.get("itemListElement", []):
+                                    it_url = it.get("url") or ""
+                                    it_name = it.get("name") or it.get("item", {}).get("name") or ""
+                                    if it_url and (pat.search(it_name) or pat.search(it_url)):
+                                        ev_m = re.search(r"(ET\d+)", it_url)
+                                        sl_m = re.search(r"/movies/(?:[^/]+/)*?([^/]+)/(?:ET\d+)", it_url)
+                                        return {
+                                            "title": it_name or movie_display_name,
+                                            "url": it_url,
+                                            "event_code": ev_m.group(1) if ev_m else None,
+                                            "movie_slug": sl_m.group(1) if sl_m else movie_display_name.lower().replace(" ", "-"),
+                                            "city_slug": city_slug,
+                                            "city_code": city_code,
+                                        }
+                            except Exception:
+                                pass
+
+                    # 2. Check all movie links in DOM
                     links = soup.find_all("a", href=re.compile(r"/movies/"))
                     for a in links:
                         link_text = a.get_text(separator=" ", strip=True)
@@ -136,18 +160,26 @@ class BMSScanner:
         city_slug, city_code = self._normalize_city(watch_item.district)
         event_code = None
         movie_slug = None
+        buytickets_url = None
 
         if watch_item.bms_url:
             self.last_url = watch_item.bms_url
-            m = re.search(r"(?:/movies/)?(?:[^/]+/)*([^/]+)/(ET\d+)", watch_item.bms_url)
-            if m:
-                movie_slug = m.group(1)
-                event_code = m.group(2)
-            else:
+            # If user provided a direct buytickets URL, use it directly
+            if "/buytickets/" in watch_item.bms_url:
+                buytickets_url = watch_item.bms_url
                 code_match = re.search(r"(ET\d+)", watch_item.bms_url)
-                event_code = code_match.group(1) if code_match else None
-                slug_match = re.search(r"/movies/([^/]+)/", watch_item.bms_url)
-                movie_slug = slug_match.group(1) if slug_match else watch_item.movie_name.lower().replace(" ", "-")
+                event_code = code_match.group(1) if code_match else "DIRECT"
+                movie_slug = watch_item.movie_name.lower().replace(" ", "-")
+            else:
+                m = re.search(r"/movies/(?:[a-zA-Z0-9\-]+/)*?([a-zA-Z0-9\-]+)/(ET\d+)", watch_item.bms_url)
+                if m:
+                    movie_slug = m.group(1)
+                    event_code = m.group(2)
+                else:
+                    code_match = re.search(r"(ET\d+)", watch_item.bms_url)
+                    event_code = code_match.group(1) if code_match else None
+                    slug_match = re.search(r"/movies/(?:[^/]+/)*?([^/]+)/", watch_item.bms_url)
+                    movie_slug = slug_match.group(1) if slug_match else watch_item.movie_name.lower().replace(" ", "-")
         else:
             movie_info = self.search_movie(watch_item, watch_item.district)
             if movie_info:
@@ -159,12 +191,12 @@ class BMSScanner:
                 self.last_status = "⏳ Not Listed on BMS Yet (Scanning City Catalog)"
                 return []
 
-        if not event_code or not movie_slug:
-            self.last_status = "⏳ Found Movie Page (Awaiting Showtimes)"
-            return []
+        if not buytickets_url:
+            if not event_code or not movie_slug:
+                self.last_status = "⏳ Found Movie Page (Awaiting Showtimes)"
+                return []
+            buytickets_url = f"{self.BASE_URL}/buytickets/{movie_slug}-{city_slug}/movie-{city_code}-{event_code}-MT/"
 
-        # Construct buytickets URL
-        buytickets_url = f"{self.BASE_URL}/buytickets/{movie_slug}-{city_slug}/movie-{city_code}-{event_code}-MT/"
         shows: List[Show] = []
 
         try:
@@ -177,7 +209,14 @@ class BMSScanner:
                 self._init_warmed_session()
                 resp = self.session.get(buytickets_url, impersonate="chrome120", timeout=self.timeout)
 
-            # Update last_url to the actual resolved showtimes page if valid
+            # If the constructed buytickets URL returns 404, try the alternate BMS URL pattern
+            if resp.status_code == 404 and event_code and event_code != "DIRECT":
+                alt_url = f"{self.BASE_URL}/movies/{city_code}/{movie_slug}-{city_slug}/buytickets/{event_code}/"
+                alt_resp = self.session.get(alt_url, impersonate="chrome120", timeout=self.timeout)
+                if alt_resp.status_code == 200:
+                    resp = alt_resp
+                    buytickets_url = alt_url
+
             if resp.status_code == 200:
                 self.last_url = resp.url or buytickets_url
             elif resp.status_code == 404:
@@ -221,14 +260,20 @@ class BMSScanner:
                                                 or s_item.get("additionalData", {}).get("showTime")
                                             )
                                             avail = s_item.get("additionalData", {}).get("seatAvalibility", "Available")
-                                            show_date = s_item.get("additionalData", {}).get("showDateCode", "")
+                                            raw_date = str(s_item.get("additionalData", {}).get("showDateCode", ""))
+
+                                            # Standardize date to YYYY-MM-DD
+                                            if len(raw_date) == 8 and raw_date.isdigit():
+                                                show_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+                                            else:
+                                                show_date = watch_item.target_date or "Today"
 
                                             if show_time:
                                                 shows.append(
                                                     Show(
                                                         theatre_name=v_name,
                                                         show_time=show_time,
-                                                        date=show_date or watch_item.target_date or "Today",
+                                                        date=show_date,
                                                         screen_format="2D",
                                                         booking_url=self.last_url,
                                                         platform="BookMyShow",
