@@ -845,7 +845,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       // In-place update of status cards WITHOUT destroying open edit drawers or inputs!
       if (radarStatus.movies) {
         radarStatus.movies.forEach(m => {
-          const item = watchlist.find(w => (w.movie_name || '').toLowerCase().trim() === (m.movie_name || '').toLowerCase().trim());
+          const item = watchlist.find(w => (m.id && w.id === m.id) || (w.movie_name || '').toLowerCase().trim() === (m.movie_name || '').toLowerCase().trim());
           if (item) {
             const bmsStatusEl = document.getElementById(`bms-status-text-${item.id}`);
             const bmsBadgeEl = document.getElementById(`bms-badge-${item.id}`);
@@ -872,6 +872,35 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               distBadgeEl.innerText = isOpen ? '🔥 OPEN' : (isWarn ? '⚠️ PARTIAL' : '⏳ CLOSED');
             }
             if (distLinkEl && m.district_url) distLinkEl.href = m.district_url;
+
+            // Live Show Booking Tiles (in-place update)
+            const bannerEl = document.getElementById(`live-shows-banner-${item.id}`);
+            if (bannerEl) {
+              const matched = m.matched_shows_list || [];
+              if (matched.length > 0) {
+                bannerEl.style.display = 'block';
+                bannerEl.innerHTML = `
+                  <div class="live-shows-title">🔥 TICKETS DETECTED! IMMEDIATE BOOKING LINKS:</div>
+                  <div class="live-shows-grid">
+                    ${matched.map(s => `
+                      <div class="show-tile">
+                        <div>
+                          <div class="show-venue">${s.theatre}</div>
+                          <div style="font-size: 11px; color: var(--text-muted);">${s.format} • ${s.platform}</div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                          <span class="show-time-badge">${s.time}</span>
+                          <a href="${s.booking_url}" target="_blank" class="btn btn-sm" style="padding: 2px 8px; font-size: 11px;">⚡ Book</a>
+                        </div>
+                      </div>
+                    `).join('')}
+                  </div>
+                `;
+              } else {
+                bannerEl.style.display = 'none';
+                bannerEl.innerHTML = '';
+              }
+            }
           }
         });
       }
@@ -1009,8 +1038,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
 
             <!-- Live Available Shows Banner (if any) -->
-            ${(matchedShows && matchedShows.length > 0) ? `
-              <div class="live-shows-banner">
+            <div id="live-shows-banner-${item.id}" class="live-shows-banner" style="display: ${(matchedShows && matchedShows.length > 0) ? 'block' : 'none'};">
+              ${(matchedShows && matchedShows.length > 0) ? `
                 <div class="live-shows-title">🔥 TICKETS DETECTED! IMMEDIATE BOOKING LINKS:</div>
                 <div class="live-shows-grid">
                   ${matchedShows.map(s => `
@@ -1026,8 +1055,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </div>
                   `).join('')}
                 </div>
-              </div>
-            ` : ''}
+              ` : ''}
+            </div>
 
             <!-- Collapsible Edit Drawer -->
             <div id="edit-drawer-${item.id}" class="edit-drawer ${isOpen ? 'open' : ''}">
@@ -1207,6 +1236,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
       }
       showToast(isFDFS ? 'Set to: Early Morning FDFS Only' : 'Set to: All Show Times (Any Time)');
+      saveAll();
     }
 
     function updateTheatresField(id, text) {

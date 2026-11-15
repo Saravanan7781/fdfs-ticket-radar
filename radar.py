@@ -68,6 +68,32 @@ def load_watchlist() -> List[WatchItem]:
         return []
 
 
+def format_diagnostic_status(raw_shows: List, matched_shows: List, item: WatchItem, fallback_status: str) -> str:
+    """Provide clear, actionable diagnostics explaining why open shows did or did not match filters."""
+    if matched_shows:
+        return f"🔥 {len(matched_shows)} MATCHING SHOWS OPEN!"
+    if not raw_shows:
+        return fallback_status
+
+    theatres_desc = ", ".join(item.target_theatres) if item.target_theatres else "All Theatres"
+    theatre_matches = [s for s in raw_shows if FDFSDetector.matches_theatre(s.theatre_name, item.target_theatres)]
+
+    if theatre_matches and item.fdfs_only:
+        times_sample = ", ".join(sorted(set(s.show_time for s in theatre_matches))[:3])
+        return f"⚠️ {len(theatre_matches)} shows open in [{theatres_desc}] ({times_sample}), but all are after 08:00 AM & FDFS filter is ON! (Switch to 'All Shows' to alert)"
+    elif not theatre_matches and item.target_theatres:
+        other_theatres = ", ".join(sorted(set(s.theatre_name.split(":")[0] for s in raw_shows))[:3])
+        return f"⚠️ {len(raw_shows)} shows open in {item.district} ({other_theatres}), but 0 at selected theatre [{theatres_desc}]."
+    elif item.fdfs_only:
+        times_sample = ", ".join(sorted(set(s.show_time for s in raw_shows))[:3])
+        return f"⚠️ {len(raw_shows)} regular shows open ({times_sample}), but FDFS filter is ON (<= 08:00 AM). (Switch to 'All Shows' to alert)"
+    elif item.target_date:
+        dates_sample = ", ".join(sorted(set(s.date for s in raw_shows))[:2])
+        return f"⚠️ {len(raw_shows)} shows open on ({dates_sample}), but 0 on target date ({item.target_date})."
+    else:
+        return f"⚠️ {len(raw_shows)} shows open in city, but 0 match current filter."
+
+
 def run_radar():
     """Start continuous FDFS radar monitoring."""
     print("=" * 65)
@@ -121,14 +147,8 @@ def run_radar():
                 # 1. Scan BookMyShow
                 bms_raw = bms.scan_shows(item)
                 bms_matched = FDFSDetector.filter_shows(bms_raw, item)
-
                 bms_url_disp = bms.last_url or f"https://in.bookmyshow.com/explore/movies-{item.district.lower()}"
-                if bms_matched:
-                    bms_status_disp = f"🔥 {len(bms_matched)} MATCHING SHOWS OPEN!"
-                elif bms_raw:
-                    bms_status_disp = f"⚠️ {len(bms_raw)} shows open in district, but 0 match target filter [{theatres_desc}]"
-                else:
-                    bms_status_disp = bms.last_status
+                bms_status_disp = format_diagnostic_status(bms_raw, bms_matched, item, bms.last_status)
 
                 print(f"   ├─ 🎟️ BookMyShow:")
                 print(f"   │  • Monitored URL: {bms_url_disp}")
@@ -137,14 +157,8 @@ def run_radar():
                 # 2. Scan District
                 dist_raw = district.scan_shows(item)
                 dist_matched = FDFSDetector.filter_shows(dist_raw, item)
-
                 dist_url_disp = district.last_url or "https://www.district.in/movies"
-                if dist_matched:
-                    dist_status_disp = f"🔥 {len(dist_matched)} MATCHING SHOWS OPEN!"
-                elif dist_raw:
-                    dist_status_disp = f"⚠️ {len(dist_raw)} shows open in district, but 0 match target filter [{theatres_desc}]"
-                else:
-                    dist_status_disp = district.last_status
+                dist_status_disp = format_diagnostic_status(dist_raw, dist_matched, item, district.last_status)
 
                 print(f"   └─ 🎟️ District by Zomato:")
                 print(f"      • Monitored URL: {dist_url_disp}")
@@ -165,6 +179,7 @@ def run_radar():
                 ]
 
                 round_summary.append({
+                    "id": item.id,
                     "movie_name": item.movie_name,
                     "district": item.district,
                     "target_theatres": item.target_theatres,
