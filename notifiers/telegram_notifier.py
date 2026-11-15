@@ -25,12 +25,14 @@ class TelegramNotifier:
             return False
 
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        headline = "🚨 <b>FDFS TICKET ALERT!</b> 🚨" if alert.is_fdfs else "🎟️ <b>TICKETS OPEN (All Shows)!</b> 🎟️"
+        tag = "⚡ Early Morning FDFS" if alert.is_fdfs else "⏰ Regular Show"
         text = (
-            f"🚨 <b>FDFS TICKET ALERT!</b> 🚨\n\n"
+            f"{headline}\n\n"
             f"🎬 <b>Movie:</b> {alert.movie_name}\n"
             f"📍 <b>District:</b> {alert.district}\n"
             f"🏛️ <b>Theatre:</b> <code>{alert.theatre_name}</code>\n"
-            f"⏰ <b>Show Time:</b> <b>{alert.show_time}</b> ({alert.date})\n"
+            f"⏰ <b>Show Time:</b> <b>{alert.show_time}</b> ({alert.date}) [<i>{tag}</i>]\n"
             f"⚡ <b>Platform:</b> <b>{alert.platform}</b>\n\n"
             f"👉 <a href='{alert.booking_url}'><b>CLICK HERE TO BOOK SEATS NOW</b></a>"
         )

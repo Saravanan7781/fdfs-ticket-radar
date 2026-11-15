@@ -17,12 +17,13 @@ class NtfyNotifier:
 
     def send_fdfs_alert(self, alert: AlertEvent) -> bool:
         """Send urgent siren alert with 1-tap booking button."""
-        title = f"FDFS TICKET ALERT: {alert.movie_name}"
+        show_type = "⚡ Early Morning FDFS" if alert.is_fdfs else "⏰ Regular Show"
+        title = f"{'FDFS SIREN' if alert.is_fdfs else 'TICKETS OPEN'}: {alert.movie_name} ({alert.show_time})"
         message = (
             f"Movie: {alert.movie_name}\n"
             f"District: {alert.district}\n"
             f"Theatre: {alert.theatre_name}\n"
-            f"Show: {alert.show_time} ({alert.date})\n"
+            f"Show: {alert.show_time} ({alert.date}) [{show_type}]\n"
             f"Platform: {alert.platform}\n\n"
             f"TAP BELOW TO BOOK SEATS NOW!"
         )
@@ -31,7 +32,7 @@ class NtfyNotifier:
         headers = {
             "Title": title,
             "Priority": "5",  # 5 = Max / Urgent (triggers alarm & overrides DND)
-            "Tags": "rotating_light,ticket,clapper",
+            "Tags": "rotating_light,ticket,alarm_clock" if alert.is_fdfs else "ticket,clapper,white_check_mark",
             "Actions": f"view, Book on {alert.platform}, {alert.booking_url}",
         }
 
