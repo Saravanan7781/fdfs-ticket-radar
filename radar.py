@@ -5,6 +5,7 @@ import logging
 import random
 import sys
 import time
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Set
@@ -21,6 +22,19 @@ def get_now() -> datetime:
 BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
+
+SCAN_TRIGGER_EVENT = threading.Event()
+RECENT_ACTIVITY_LOGS: List[dict] = []
+TRIGGER_FLAG_PATH = BASE_DIR / "config" / "trigger_scan.flag"
+
+
+def trigger_instant_scan():
+    """Trigger an immediate scan round (used by web UI button /api/scan-now)."""
+    SCAN_TRIGGER_EVENT.set()
+    try:
+        TRIGGER_FLAG_PATH.touch(exist_ok=True)
+    except Exception:
+        pass
 
 from config.settings import Settings
 from core.bms_scanner import BMSScanner
@@ -138,6 +152,18 @@ def run_radar():
 
                 all_matches = bms_matched + dist_matched
 
+                matched_shows_preview = [
+                    {
+                        "theatre": s.theatre_name,
+                        "time": s.show_time,
+                        "date": s.date,
+                        "platform": s.platform,
+                        "format": s.screen_format,
+                        "booking_url": s.booking_url,
+                    }
+                    for s in all_matches
+                ]
+
                 round_summary.append({
                     "movie_name": item.movie_name,
                     "district": item.district,
@@ -148,6 +174,7 @@ def run_radar():
                     "district_url": dist_url_disp,
                     "district_status": dist_status_disp,
                     "matched_shows_count": len(all_matches),
+                    "matched_shows_list": matched_shows_preview,
                 })
 
                 for show in all_matches:
@@ -182,14 +209,36 @@ def run_radar():
 
                     alerted_keys.add(key)
 
+            # Record round activity log
+            total_matches_in_round = sum(m.get("matched_shows_count", 0) for m in round_summary)
+            activity_entry = {
+                "round": scan_round,
+                "time": get_now().strftime("%I:%M:%S %p"),
+                "total_matches": total_matches_in_round,
+                "summary": f"Round #{scan_round}: Checked {len(watchlist)} title(s). " + (
+                    f"🔥 {total_matches_in_round} MATCHING SHOWS OPEN!" if total_matches_in_round > 0 else "All quiet (no matching tickets released yet)."
+                ),
+            }
+            RECENT_ACTIVITY_LOGS.insert(0, activity_entry)
+            if len(RECENT_ACTIVITY_LOGS) > 25:
+                RECENT_ACTIVITY_LOGS.pop()
+
+            # Calculate sleep with random human jitter
+            sleep_time = Settings.POLL_INTERVAL_WAR_ROOM + random.randint(
+                -Settings.JITTER_SECONDS, Settings.JITTER_SECONDS
+            )
+
             # Update live status file for mobile dashboard
             status_data = {
                 "is_running": True,
                 "scan_round": scan_round,
                 "last_scan_time": get_now().strftime("%I:%M:%S %p IST"),
                 "last_scan_timestamp": int(time.time()),
+                "next_check_in": sleep_time,
+                "next_scan_timestamp": int(time.time() + sleep_time),
                 "movies_count": len(watchlist),
                 "movies": round_summary,
+                "recent_logs": RECENT_ACTIVITY_LOGS,
             }
             try:
                 Settings.STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -198,13 +247,20 @@ def run_radar():
             except Exception as e:
                 logger.debug("Error writing status file: %s", e)
 
-            # Calculate sleep with random human jitter
-            sleep_time = Settings.POLL_INTERVAL_WAR_ROOM + random.randint(
-                -Settings.JITTER_SECONDS, Settings.JITTER_SECONDS
-            )
             logger.info("Scan completed. Next check in %d seconds. (Ctrl+C to stop)", sleep_time)
             scan_round += 1
-            time.sleep(sleep_time)
+
+            # Wait for sleep_time or until an instant scan is requested
+            for _ in range(sleep_time):
+                if SCAN_TRIGGER_EVENT.is_set() or TRIGGER_FLAG_PATH.exists():
+                    logger.info("⚡ Instant scan triggered by user via dashboard!")
+                    SCAN_TRIGGER_EVENT.clear()
+                    try:
+                        TRIGGER_FLAG_PATH.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    break
+                time.sleep(1)
 
     except KeyboardInterrupt:
         print("\n\n[🛑] FDFS Ticket Radar stopped by user. Goodbye!")
