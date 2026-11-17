@@ -1330,12 +1330,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     function showPresetModal() {
       const choice = prompt(
-        "Choose an Upcoming Movie Preset to Add:\n" +
-        "1. Coolie (Chennai - Rohini, Vettri, AGS)\n" +
-        "2. Thalapathy 69 (Chennai - Rohini, AGS)\n" +
-        "3. Good Bad Ugly (Chennai - Rohini, Vettri)\n" +
-        "4. Scene (Coimbatore - All Theatres)\n" +
-        "Enter number [1-4]:"
+        [
+          "Choose an Upcoming Movie Preset to Add:",
+          "1. Coolie (Chennai - Rohini, Vettri, AGS)",
+          "2. Thalapathy 69 (Chennai - Rohini, AGS)",
+          "3. Good Bad Ugly (Chennai - Rohini, Vettri)",
+          "4. Scene (Coimbatore - All Theatres)",
+          "Enter number [1-4]:"
+        ].join("\\n")
       );
 
       if (choice === "1") {
