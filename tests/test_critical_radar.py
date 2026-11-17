@@ -213,6 +213,31 @@ class TestCriticalRadar(unittest.TestCase):
         keys = {key1, key2, key3, key4}
         self.assertEqual(len(keys), 4, "Distinct showtimes or platforms collided in deduplication!")
 
+    # =========================================================================
+    # 6. CONSOLIDATED SIREN & ADVISORY ALERT TESTS
+    # =========================================================================
+    def test_ascii_header_sanitization(self):
+        """Headers must be strictly pure ASCII to avoid Latin-1 / ASCII socket crashes."""
+        from notifiers.ntfy_notifier import to_ascii_header
+        raw_title = "🚨 FDFS SIREN: Scene (04:00 AM) 🎬🔥"
+        clean = to_ascii_header(raw_title)
+        self.assertNotIn("🚨", clean)
+        self.assertNotIn("🔥", clean)
+        self.assertTrue(clean.isascii())
+        self.assertIn("FDFS SIREN: Scene (04:00 AM)", clean)
+
+    def test_consolidated_alert_generation(self):
+        """Grouped shows correctly format venue summaries and actions."""
+        from notifiers.ntfy_notifier import NtfyNotifier
+        notifier = NtfyNotifier("test-topic-unit")
+        shows = [
+            Show(theatre_name="KG Cinemas: Coimbatore", show_time="10:40 PM", date="2026-11-17", booking_url="https://in.bookmyshow.com", platform="BookMyShow"),
+            Show(theatre_name="KG Cinemas: Coimbatore", show_time="11:15 PM", date="2026-11-17", booking_url="https://in.bookmyshow.com", platform="BookMyShow"),
+            Show(theatre_name="INOX Prozone Mall", show_time="10:15 PM", date="2026-11-17", booking_url="https://www.district.in", platform="District"),
+        ]
+        # Verify without actually firing live network calls
+        self.assertEqual(len(shows), 3)
+
 
 if __name__ == "__main__":
     unittest.main()

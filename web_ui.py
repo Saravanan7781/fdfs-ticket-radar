@@ -1315,7 +1315,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         district: 'Chennai',
         target_theatres: [],
         target_date: null,
-        fdfs_only: true,
+        fdfs_only: false,
         fdfs_max_time: '08:00',
         enabled: true
       };
@@ -1330,11 +1330,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     function showPresetModal() {
       const choice = prompt(
-        "Choose an Upcoming Movie Preset to Add:\\n" +
-        "1. Coolie (Chennai - Rohini, Vettri, AGS)\\n" +
-        "2. Thalapathy 69 (Chennai - Rohini, AGS)\\n" +
-        "3. Good Bad Ugly (Chennai - Rohini, Vettri)\\n" +
-        "4. Scene (Coimbatore - KG Cinemas)\\n" +
+        "Choose an Upcoming Movie Preset to Add:\n" +
+        "1. Coolie (Chennai - Rohini, Vettri, AGS)\n" +
+        "2. Thalapathy 69 (Chennai - Rohini, AGS)\n" +
+        "3. Good Bad Ugly (Chennai - Rohini, Vettri)\n" +
+        "4. Scene (Coimbatore - All Theatres)\n" +
         "Enter number [1-4]:"
       );
 
@@ -1344,27 +1344,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           movie_regex: 'Coolie.*',
           district: 'Chennai',
           target_theatres: ['Rohini Silver Screens', 'Vettri Theatres', 'AGS Cinemas'],
-          fdfs_only: true,
+          fdfs_only: false,
           fdfs_max_time: '08:00',
           enabled: true
         });
       } else if (choice === "2") {
         addMovieCard({
           movie_name: 'Thalapathy 69',
-          movie_regex: 'Thalapathy\\\\s*(?:69|T69)',
+          movie_regex: 'Thalapathy\\s*(?:69|T69)',
           district: 'Chennai',
           target_theatres: ['Rohini Silver Screens', 'AGS Cinemas'],
-          fdfs_only: true,
+          fdfs_only: false,
           fdfs_max_time: '08:00',
           enabled: true
         });
       } else if (choice === "3") {
         addMovieCard({
           movie_name: 'Good Bad Ugly',
-          movie_regex: 'Good[\\\\s\\\\.\\\\-_]*Bad[\\\\s\\\\.\\\\-_]*Ugly',
+          movie_regex: 'Good[\\s\\.\\-_]*Bad[\\s\\.\\-_]*Ugly',
           district: 'Chennai',
           target_theatres: ['Rohini Silver Screens', 'Vettri Theatres'],
-          fdfs_only: true,
+          fdfs_only: false,
           fdfs_max_time: '08:00',
           enabled: true
         });
@@ -1373,8 +1373,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           movie_name: 'Scene',
           movie_regex: 'Scene',
           district: 'Coimbatore',
-          target_theatres: ['KG Cinemas'],
-          fdfs_only: true,
+          target_theatres: [],
+          fdfs_only: false,
           fdfs_max_time: '08:00',
           enabled: true
         });

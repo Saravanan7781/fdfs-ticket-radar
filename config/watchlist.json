@@ -9,7 +9,7 @@
         "KG Cinemas"
       ],
       "target_date": null,
-      "fdfs_only": true,
+      "fdfs_only": false,
       "fdfs_max_time": "08:00",
       "enabled": true
     },

@@ -126,17 +126,28 @@ def run_radar():
 
     # Deduplication cache: (movie_id, platform, theatre, date)
     alerted_keys: Set[str] = set()
+    advisory_keys: Set[str] = set()
 
     scan_round = 1
     try:
         while True:
+            # Check if this round was triggered manually by user ("⚡ Scan Now")
+            manual_triggered = SCAN_TRIGGER_EVENT.is_set() or TRIGGER_FLAG_PATH.exists()
+            if manual_triggered:
+                SCAN_TRIGGER_EVENT.clear()
+                try:
+                    TRIGGER_FLAG_PATH.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
             # Reload watchlist and active ntfy topic in case user modified it
             watchlist = load_watchlist()
             current_topic = Settings.get_ntfy_topic()
             if ntfy.topic != current_topic:
                 ntfy = NtfyNotifier(current_topic)
             now_str = get_now().strftime("%I:%M:%S %p IST")
-            print(f"\n[{now_str}] 🛰️  Round #{scan_round}: Scanning BookMyShow & District...")
+            trigger_tag = " [⚡ USER MANUAL SCAN]" if manual_triggered else ""
+            print(f"\n[{now_str}] 🛰️  Round #{scan_round}{trigger_tag}: Scanning BookMyShow & District...")
 
             round_summary = []
             for item in watchlist:
@@ -169,6 +180,7 @@ def run_radar():
                 print(f"      • Status:        {dist_status_disp}")
 
                 all_matches = bms_matched + dist_matched
+                raw_all = bms_raw + dist_raw
 
                 matched_shows_preview = [
                     {
@@ -196,37 +208,79 @@ def run_radar():
                     "matched_shows_list": matched_shows_preview,
                 })
 
+                # Check for regular shows advisory if FDFS filter is ON but regular shows opened
+                if item.fdfs_only and not all_matches and raw_all:
+                    matching_theatre_raw = [
+                        s for s in raw_all 
+                        if FDFSDetector.matches_theatre(s.theatre_name, item.target_theatres) and "sold" not in s.status.lower()
+                    ]
+                    advisory_key = f"adv:{item.id}:{len(matching_theatre_raw)}"
+                    if matching_theatre_raw and advisory_key not in advisory_keys:
+                        print(f"\n[ℹ️] Dispatching regular shows advisory alert for '{item.movie_name}'...")
+                        ntfy.send_filter_advisory_alert(item.movie_name, item.district, matching_theatre_raw, item.fdfs_max_time)
+                        advisory_keys.add(advisory_key)
+
+                # Determine which shows are new
+                new_shows = []
                 for show in all_matches:
                     key = f"{item.id}:{show.platform}:{show.theatre_name}:{show.show_time}:{show.date}"
-                    if key in alerted_keys:
-                        continue  # Already alerted for this exact show
+                    if key not in alerted_keys:
+                        new_shows.append((key, show))
 
-                    # 🔥 TRIGGER SIREN ALERT!
-                    alert = AlertEvent(
-                        movie_name=item.movie_name,
-                        district=item.district,
-                        platform=show.platform,
-                        theatre_name=show.theatre_name,
-                        show_time=show.show_time,
-                        date=show.date,
-                        booking_url=show.booking_url,
-                        is_fdfs=show.is_fdfs,
-                    )
+                # If user pressed "Scan Now", or if there are brand new matching shows:
+                shows_to_alert = []
+                if manual_triggered and all_matches:
+                    # Force alert for currently open shows on manual user request!
+                    shows_to_alert = all_matches
+                elif new_shows:
+                    shows_to_alert = [s for _, s in new_shows]
 
+                if shows_to_alert:
+                    is_any_fdfs = any(s.is_fdfs for s in shows_to_alert)
                     print("\n" + "🔥" * 30)
-                    print(f"🚨 TICKETS DETECTED ON {show.platform.upper()}! 🚨")
-                    print(f"Movie: {item.movie_name}")
-                    print(f"Theatre: {show.theatre_name}")
-                    print(f"Show: {show.show_time}")
-                    print(f"Book: {show.booking_url}")
+                    print(f"🚨 TICKETS DETECTED FOR '{item.movie_name}' ({len(shows_to_alert)} shows)! 🚨")
+                    for s in shows_to_alert[:5]:
+                        print(f"  • {s.platform}: {s.theatre_name} @ {s.show_time}")
                     print("🔥" * 30 + "\n")
 
-                    # Push emergency sirens
-                    ntfy.send_fdfs_alert(alert)
-                    if tele.is_configured:
-                        tele.send_fdfs_alert(alert)
+                    # Push single consolidated emergency siren alert
+                    delivered = ntfy.send_matched_shows_alert(
+                        movie_name=item.movie_name,
+                        district=item.district,
+                        shows=shows_to_alert,
+                        is_fdfs=is_any_fdfs,
+                        is_manual_scan=manual_triggered,
+                    )
 
-                    alerted_keys.add(key)
+                    if tele.is_configured:
+                        for s in shows_to_alert[:3]:
+                            tele.send_fdfs_alert(AlertEvent(
+                                movie_name=item.movie_name,
+                                district=item.district,
+                                platform=s.platform,
+                                theatre_name=s.theatre_name,
+                                show_time=s.show_time,
+                                date=s.date,
+                                booking_url=s.booking_url,
+                                is_fdfs=s.is_fdfs,
+                            ))
+
+                    if delivered:
+                        for k, _ in new_shows:
+                            alerted_keys.add(k)
+
+            # If user manually clicked "Scan Now" but no tickets are open yet, ping phone with confirmation
+            if manual_triggered and total_matches_in_round == 0:
+                titles_disp = ", ".join(m.get("movie_name", "") for m in round_summary) or "Active watchlist"
+                ntfy._dispatch(
+                    {
+                        "Title": to_ascii_header(f"Radar Scan: All Quiet ({len(watchlist)} Titles)"),
+                        "Priority": "3",
+                        "Tags": "satellite,white_check_mark",
+                        "Click": f"https://ntfy.sh/{ntfy.topic}",
+                    },
+                    f"Round #{scan_round} manual scan complete.\nMonitoring: {titles_disp}.\nStatus: No matching tickets released yet.\nRadar scanning 24/7!",
+                )
 
             # Record round activity log
             total_matches_in_round = sum(m.get("matched_shows_count", 0) for m in round_summary)
@@ -273,11 +327,6 @@ def run_radar():
             for _ in range(sleep_time):
                 if SCAN_TRIGGER_EVENT.is_set() or TRIGGER_FLAG_PATH.exists():
                     logger.info("⚡ Instant scan triggered by user via dashboard!")
-                    SCAN_TRIGGER_EVENT.clear()
-                    try:
-                        TRIGGER_FLAG_PATH.unlink(missing_ok=True)
-                    except Exception:
-                        pass
                     break
                 time.sleep(1)
 
