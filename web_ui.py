@@ -7,7 +7,7 @@ import sys
 import threading
 import urllib.parse
 import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer, HTTPServer
 from pathlib import Path
 
 # Ensure project root in sys.path
@@ -1496,18 +1496,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 class DashboardHandler(BaseHTTPRequestHandler):
     """Handles web UI requests and watchlist API."""
 
+    def do_HEAD(self):
+        """Handle HEAD requests (used by Render and health monitoring probes)."""
+        if self.path in ("/health", "/ping", "/healthz", "/"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def do_GET(self):
+        # Health checks first: respond in <1ms to keep cloud services (Render, Railway) healthy
+        if self.path in ("/health", "/ping", "/healthz"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(b'{"status": "alive", "service": "fdfs-ticket-radar"}')
+            return
+
         if self.path == "/" or self.path == "/index.html":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(HTML_TEMPLATE.encode("utf-8"))
-
-        elif self.path in ("/health", "/ping"):
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"status": "alive", "service": "fdfs-ticket-radar"}')
 
         elif self.path == "/api/status":
             data = {"is_running": True, "scan_round": 0, "last_scan_time": "Initializing...", "movies": []}
@@ -1624,7 +1638,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
 def start_server(port: int = None, open_browser: bool = True):
     if port is None:
         port = int(os.environ.get("PORT", "5055"))
-    server = HTTPServer(("0.0.0.0", port), DashboardHandler)
+    # ThreadingHTTPServer serves health checks and dashboard requests concurrently without blocking
+    try:
+        server = ThreadingHTTPServer(("0.0.0.0", port), DashboardHandler)
+    except Exception:
+        server = HTTPServer(("0.0.0.0", port), DashboardHandler)
     url = f"http://localhost:{port}"
     print("=" * 60)
     print("  🎟️  FDFS TICKET RADAR — 24/7 COMMAND DASHBOARD")

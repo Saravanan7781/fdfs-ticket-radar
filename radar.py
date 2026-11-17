@@ -41,7 +41,7 @@ from core.bms_scanner import BMSScanner
 from core.district_scanner import DistrictScanner
 from core.fdfs_detector import FDFSDetector
 from core.models import AlertEvent, WatchItem
-from notifiers.ntfy_notifier import NtfyNotifier
+from notifiers.ntfy_notifier import NtfyNotifier, to_ascii_header
 from notifiers.telegram_notifier import TelegramNotifier
 
 logging.basicConfig(
@@ -269,6 +269,9 @@ def run_radar():
                         for k, _ in new_shows:
                             alerted_keys.add(k)
 
+            # Record round activity log
+            total_matches_in_round = sum(m.get("matched_shows_count", 0) for m in round_summary)
+
             # If user manually clicked "Scan Now" but no tickets are open yet, ping phone with confirmation
             if manual_triggered and total_matches_in_round == 0:
                 titles_disp = ", ".join(m.get("movie_name", "") for m in round_summary) or "Active watchlist"
@@ -281,9 +284,6 @@ def run_radar():
                     },
                     f"Round #{scan_round} manual scan complete.\nMonitoring: {titles_disp}.\nStatus: No matching tickets released yet.\nRadar scanning 24/7!",
                 )
-
-            # Record round activity log
-            total_matches_in_round = sum(m.get("matched_shows_count", 0) for m in round_summary)
             activity_entry = {
                 "round": scan_round,
                 "time": get_now().strftime("%I:%M:%S %p"),

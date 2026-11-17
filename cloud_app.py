@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 
 # Ensure project root is in sys.path
@@ -26,10 +27,24 @@ logging.basicConfig(
 logger = logging.getLogger("cloud-app")
 
 
+def radar_supervisor():
+    """Supervisor thread to guarantee radar continuously runs and auto-restarts on any failure."""
+    while True:
+        try:
+            logger.info("Starting background FDFS Ticket Radar scanner...")
+            run_radar()
+        except KeyboardInterrupt:
+            logger.info("Radar stopped by user.")
+            break
+        except Exception as e:
+            logger.exception("Unexpected radar crash: %s. Auto-restarting radar in 5 seconds...", e)
+            time.sleep(5)
+
+
 def start_radar_thread():
-    """Start radar loop in background thread."""
-    logger.info("Starting background FDFS Ticket Radar thread...")
-    radar_thread = threading.Thread(target=run_radar, daemon=True, name="RadarScannerThread")
+    """Start radar supervisor in background daemon thread."""
+    logger.info("Starting background FDFS Ticket Radar supervisor thread...")
+    radar_thread = threading.Thread(target=radar_supervisor, daemon=True, name="RadarSupervisorThread")
     radar_thread.start()
     return radar_thread
 
