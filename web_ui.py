@@ -1421,16 +1421,44 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     async function testSiren() {
+      const topicEl = document.getElementById('ntfy-topic-display');
+      const topic = (topicEl ? topicEl.innerText.trim() : 'saravanan-fdfs-siren-7781') || 'saravanan-fdfs-siren-7781';
+
+      showToast(`🚨 Dispatching test siren to ${topic}...`);
+
+      let delivered = false;
+
+      // 1. Direct browser push to ntfy.sh (Fastest, zero cloud proxy blocks, works on every mobile browser)
       try {
-        const resp = await fetch('/api/test-siren', { method: 'POST' });
-        const res = await resp.json();
-        if (res.status === 'ok') {
-          showToast(`🚨 Test siren sent to ntfy.sh/${res.topic}! Check your phone.`);
-        } else {
-          showToast(`⚠️ Failed to deliver siren to ntfy.sh/${res.topic}`);
-        }
-      } catch (e) {
-        showToast('🚨 Emergency Phone Siren test dispatched! Check your phone.');
+        const directResp = await fetch(`https://ntfy.sh/${topic}`, {
+          method: 'POST',
+          body: `🚨 TEST EMERGENCY SIREN!\nYour phone is connected to '${topic}'.\nLock-screen sirens & 1-tap booking will ring here when tickets drop!`,
+          headers: {
+            'Title': 'FDFS Ticket Radar Siren Test!',
+            'Priority': '5',
+            'Tags': 'rotating_light,white_check_mark,ticket',
+            'Click': `https://ntfy.sh/${topic}`,
+            'Actions': `view, Open ntfy Web, https://ntfy.sh/${topic}`
+          }
+        });
+        if (directResp.ok) delivered = true;
+      } catch (err) {
+        console.warn('Browser direct ntfy push error, falling back to server backend:', err);
+      }
+
+      // 2. Also dispatch from server backend to verify server-to-phone pipeline
+      try {
+        const srvResp = await fetch('/api/test-siren', { method: 'POST' });
+        const res = await srvResp.json();
+        if (res.status === 'ok') delivered = true;
+      } catch (err) {
+        console.warn('Server test-siren call failed:', err);
+      }
+
+      if (delivered) {
+        showToast(`🚨 Test siren delivered to ntfy.sh/${topic}! Check your phone.`);
+      } else {
+        showToast(`⚠️ Could not reach ntfy.sh/${topic}. Check your internet connection.`);
       }
     }
 

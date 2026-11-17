@@ -3,6 +3,7 @@
 import logging
 import re
 from typing import Optional
+from curl_cffi import requests as cffi_requests
 import httpx
 from config.settings import Settings
 from core.models import AlertEvent
@@ -45,18 +46,32 @@ class NtfyNotifier:
             "Actions": f"view, Book on {clean_platform}, {alert.booking_url}",
         }
 
+        # 1. Primary: Use curl_cffi with Chrome 120 TLS fingerprint (bypasses Cloudflare on datacenter/cloud IPs)
+        try:
+            resp = cffi_requests.post(
+                self.url,
+                data=message.encode("utf-8"),
+                headers=headers,
+                impersonate="chrome120",
+                timeout=12,
+            )
+            if resp.status_code == 200:
+                logger.info("Successfully sent emergency phone siren alert via ntfy.sh topic: %s", self.topic)
+                return True
+            else:
+                logger.warning("cffi_requests status %d, trying httpx fallback...", resp.status_code)
+        except Exception as e:
+            logger.warning("cffi_requests exception: %s, trying httpx fallback...", e)
+
+        # 2. Fallback: Standard httpx
         try:
             with httpx.Client(timeout=10.0) as client:
-                resp = client.post(
-                    self.url,
-                    content=message.encode("utf-8"),
-                    headers=headers,
-                )
+                resp = client.post(self.url, content=message.encode("utf-8"), headers=headers)
                 if resp.status_code == 200:
-                    logger.info("Successfully sent emergency phone siren alert via ntfy.sh topic: %s", self.topic)
+                    logger.info("Successfully sent alert via httpx to topic: %s", self.topic)
                     return True
                 else:
-                    logger.error("Failed to send ntfy alert: HTTP %d %s", resp.status_code, resp.text)
+                    logger.error("Failed to send ntfy alert via httpx: HTTP %d %s", resp.status_code, resp.text)
                     return False
         except Exception as e:
             logger.exception("Error dispatching ntfy notification: %s", e)
@@ -75,6 +90,20 @@ class NtfyNotifier:
             f"Your phone is successfully connected to topic: '{self.topic}'.\n\n"
             "Emergency sirens and 1-tap booking buttons will pop up on your screen when tickets open!"
         )
+
+        try:
+            resp = cffi_requests.post(
+                self.url,
+                data=message.encode("utf-8"),
+                headers=headers,
+                impersonate="chrome120",
+                timeout=12,
+            )
+            if resp.status_code == 200:
+                return True
+        except Exception as e:
+            logger.warning("cffi test alert failed: %s, falling back to httpx...", e)
+
         try:
             with httpx.Client(timeout=10.0) as client:
                 resp = client.post(self.url, content=message.encode("utf-8"), headers=headers)
