@@ -99,7 +99,8 @@ def run_radar():
     print("=" * 65)
     print("  🚨 FDFS TICKET RADAR (BookMyShow + District by Zomato)")
     print("=" * 65)
-    print(f"• Phone Siren Channel: https://ntfy.sh/{Settings.NTFY_TOPIC}")
+    active_topic = Settings.get_ntfy_topic()
+    print(f"• Phone Siren Channel: https://ntfy.sh/{active_topic}")
     print(f"• Watchlist File: {Settings.WATCHLIST_PATH}")
 
     watchlist = load_watchlist()
@@ -116,11 +117,11 @@ def run_radar():
     # Initialize scanners and notifiers
     bms = BMSScanner()
     district = DistrictScanner()
-    ntfy = NtfyNotifier(Settings.NTFY_TOPIC)
+    ntfy = NtfyNotifier(active_topic)
     tele = TelegramNotifier(Settings.TELEGRAM_BOT_TOKEN, Settings.TELEGRAM_CHAT_ID)
 
     # Test ntfy connection on startup
-    print(f"\n[🔔] Sending welcome ping to ntfy.sh/{Settings.NTFY_TOPIC}...")
+    print(f"\n[🔔] Sending welcome ping to ntfy.sh/{active_topic}...")
     ntfy.send_test_alert()
 
     # Deduplication cache: (movie_id, platform, theatre, date)
@@ -129,8 +130,11 @@ def run_radar():
     scan_round = 1
     try:
         while True:
-            # Reload watchlist in case user modified it
+            # Reload watchlist and active ntfy topic in case user modified it
             watchlist = load_watchlist()
+            current_topic = Settings.get_ntfy_topic()
+            if ntfy.topic != current_topic:
+                ntfy = NtfyNotifier(current_topic)
             now_str = get_now().strftime("%I:%M:%S %p IST")
             print(f"\n[{now_str}] 🛰️  Round #{scan_round}: Scanning BookMyShow & District...")
 

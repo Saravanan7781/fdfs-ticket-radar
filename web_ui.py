@@ -729,6 +729,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
     </div>
 
+    <!-- Phone Siren Channel & Mobile Notification Setup -->
+    <div class="target-card" style="margin-bottom: 24px; border: 1px solid rgba(0, 242, 254, 0.4); background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(20, 30, 48, 0.85) 100%);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+        <div style="flex: 1; min-width: 280px;">
+          <div style="font-size: 15px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+            <span>🔔</span> Phone Siren Topic: 
+            <code style="background: rgba(0, 242, 254, 0.15); color: var(--cyan); padding: 3px 10px; border-radius: 6px; font-size: 14px; font-weight: 700;" id="ntfy-topic-display">saravanan-fdfs-siren-7781</code>
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px; line-height: 1.6;">
+            <b>Why notifications might not pop up on your phone:</b>
+            <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 4px;">
+              <div>1️⃣ <b>Subscribe in app:</b> Open ntfy app &amp; subscribe to <span id="ntfy-topic-guide" style="color: var(--cyan); font-weight: 700;">saravanan-fdfs-siren-7781</span>.</div>
+              <div>2️⃣ <b>Android Notification Permission:</b> Make sure phone allows <i>"All Notifications"</i> for the ntfy app.</div>
+              <div>3️⃣ <b>Battery Optimization:</b> Set ntfy battery setting to <i>"Unrestricted"</i> so alerts pop when screen is locked.</div>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <a href="ntfy://ntfy.sh/saravanan-fdfs-siren-7781" id="ntfy-app-link" class="btn btn-cyan btn-sm">📲 Open in ntfy App</a>
+          <a href="https://ntfy.sh/saravanan-fdfs-siren-7781" id="ntfy-web-link" target="_blank" class="btn btn-secondary btn-sm">🌐 Web Feed</a>
+          <button class="btn btn-sm" style="background: #ff2a5f; color: white;" onclick="testSiren()">🚨 Test Siren</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Main Section: Targets -->
     <div class="section-header">
       <div class="section-title">
@@ -782,6 +807,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const res = await fetch('/api/watchlist');
         const data = await res.json();
         watchlist = data.watchlist || [];
+        const topic = data.ntfy_topic || 'saravanan-fdfs-siren-7781';
+        const topicEl = document.getElementById('ntfy-topic-display');
+        const guideEl = document.getElementById('ntfy-topic-guide');
+        const appLink = document.getElementById('ntfy-app-link');
+        const webLink = document.getElementById('ntfy-web-link');
+        if (topicEl) topicEl.innerText = topic;
+        if (guideEl) guideEl.innerText = topic;
+        if (appLink) appLink.href = `ntfy://ntfy.sh/${topic}`;
+        if (webLink) webLink.href = `https://ntfy.sh/${topic}`;
         document.getElementById('target-count-badge').innerText = watchlist.length;
         document.getElementById('stats-movies-count').innerText = `${watchlist.length} Titles`;
         render();
@@ -1376,17 +1410,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     async function saveAll() {
+      const topicEl = document.getElementById('ntfy-topic-display');
+      const ntfy_topic = topicEl ? topicEl.innerText.trim() : 'saravanan-fdfs-siren-7781';
       await fetch('/api/watchlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ watchlist })
+        body: JSON.stringify({ ntfy_topic, watchlist })
       });
       showToast('💾 Watchlist updated! Radar scanner synced.');
     }
 
     async function testSiren() {
-      await fetch('/api/test-siren', { method: 'POST' });
-      showToast('🚨 Emergency Phone Siren test dispatched! Check your phone.');
+      try {
+        const resp = await fetch('/api/test-siren', { method: 'POST' });
+        const res = await resp.json();
+        if (res.status === 'ok') {
+          showToast(`🚨 Test siren sent to ntfy.sh/${res.topic}! Check your phone.`);
+        } else {
+          showToast(`⚠️ Failed to deliver siren to ntfy.sh/${res.topic}`);
+        }
+      } catch (e) {
+        showToast('🚨 Emergency Phone Siren test dispatched! Check your phone.');
+      }
     }
 
     async function pingStatus() {
@@ -1450,10 +1495,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(data).encode("utf-8"))
 
         elif self.path == "/api/watchlist":
-            data = {"watchlist": []}
+            data = {"watchlist": [], "ntfy_topic": Settings.get_ntfy_topic()}
             if Settings.WATCHLIST_PATH.exists():
                 with open(Settings.WATCHLIST_PATH, "r", encoding="utf-8") as f:
                     data = json.load(f)
+            if not data.get("ntfy_topic"):
+                data["ntfy_topic"] = Settings.get_ntfy_topic()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -1484,12 +1531,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.wfile.write(str(e).encode())
 
         elif self.path == "/api/test-siren":
-            notifier = NtfyNotifier(Settings.NTFY_TOPIC)
-            notifier.send_test_alert()
+            topic = Settings.get_ntfy_topic()
+            notifier = NtfyNotifier(topic)
+            success = notifier.send_test_alert()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(b'{"status": "ok"}')
+            self.wfile.write(json.dumps({"status": "ok" if success else "error", "topic": topic}).encode("utf-8"))
 
         elif self.path == "/api/scan-now":
             try:
@@ -1518,8 +1566,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
             try:
                 import httpx
+                topic = Settings.get_ntfy_topic()
                 httpx.post(
-                    f"https://ntfy.sh/{Settings.NTFY_TOPIC}",
+                    f"https://ntfy.sh/{topic}",
                     headers={
                         "Title": f"Radar Status: Round #{round_num}",
                         "Priority": "3",

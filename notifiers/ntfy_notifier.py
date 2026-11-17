@@ -1,39 +1,48 @@
 """High-priority phone push notifications via ntfy.sh (Emergency Siren Alert)."""
 
 import logging
+import re
 from typing import Optional
 import httpx
+from config.settings import Settings
 from core.models import AlertEvent
 
 logger = logging.getLogger(__name__)
 
 
+def to_ascii_header(text: str) -> str:
+    """Ensure HTTP header strings are pure ASCII to avoid Latin-1 / ASCII encoding errors."""
+    return text.encode("ascii", "ignore").decode("ascii").strip()
+
+
 class NtfyNotifier:
     """Sends lock-screen notifications with custom urgency and 1-tap action buttons."""
 
-    def __init__(self, topic: str):
-        self.topic = topic.strip().lstrip("/")
+    def __init__(self, topic: Optional[str] = None):
+        self.topic = (topic or Settings.get_ntfy_topic()).strip().lstrip("/")
         self.url = f"https://ntfy.sh/{self.topic}"
 
     def send_fdfs_alert(self, alert: AlertEvent) -> bool:
         """Send urgent siren alert with 1-tap booking button."""
         show_type = "⚡ Early Morning FDFS" if alert.is_fdfs else "⏰ Regular Show"
-        title = f"{'FDFS SIREN' if alert.is_fdfs else 'TICKETS OPEN'}: {alert.movie_name} ({alert.show_time})"
+        clean_title = to_ascii_header(f"{'FDFS SIREN' if alert.is_fdfs else 'TICKETS OPEN'}: {alert.movie_name} ({alert.show_time})")
+
         message = (
-            f"Movie: {alert.movie_name}\n"
-            f"District: {alert.district}\n"
-            f"Theatre: {alert.theatre_name}\n"
-            f"Show: {alert.show_time} ({alert.date}) [{show_type}]\n"
-            f"Platform: {alert.platform}\n\n"
+            f"🎬 Movie: {alert.movie_name}\n"
+            f"📍 District: {alert.district}\n"
+            f"🏛️ Theatre: {alert.theatre_name}\n"
+            f"⏰ Show: {alert.show_time} ({alert.date}) [{show_type}]\n"
+            f"⚡ Platform: {alert.platform}\n\n"
             f"TAP BELOW TO BOOK SEATS NOW!"
         )
 
-        # In HTTP/1.1, headers must be ASCII-safe
+        clean_platform = to_ascii_header(alert.platform)
         headers = {
-            "Title": title,
+            "Title": clean_title,
             "Priority": "5",  # 5 = Max / Urgent (triggers alarm & overrides DND)
             "Tags": "rotating_light,ticket,alarm_clock" if alert.is_fdfs else "ticket,clapper,white_check_mark",
-            "Actions": f"view, Book on {alert.platform}, {alert.booking_url}",
+            "Click": alert.booking_url,
+            "Actions": f"view, Book on {clean_platform}, {alert.booking_url}",
         }
 
         try:
@@ -54,16 +63,17 @@ class NtfyNotifier:
             return False
 
     def send_test_alert(self) -> bool:
-        """Send a test notification to verify user's phone setup."""
+        """Send an urgent test siren notification to verify user's phone setup."""
         headers = {
-            "Title": "FDFS Ticket Radar Connected!",
-            "Priority": "4",
-            "Tags": "white_check_mark,popcorn",
-            "Actions": "view, Open ntfy, https://ntfy.sh",
+            "Title": "FDFS Ticket Radar Test Alert!",
+            "Priority": "5",  # Max / Urgent priority so test alert definitely rings and pops up!
+            "Tags": "rotating_light,white_check_mark,popcorn",
+            "Click": f"https://ntfy.sh/{self.topic}",
+            "Actions": f"view, Open ntfy Web, https://ntfy.sh/{self.topic}",
         }
         message = (
-            f"Your phone is successfully subscribed to topic: '{self.topic}'.\n"
-            "When tickets open for your target movie, an emergency siren will ring here!"
+            f"Your phone is successfully connected to topic: '{self.topic}'.\n\n"
+            "Emergency sirens and 1-tap booking buttons will pop up on your screen when tickets open!"
         )
         try:
             with httpx.Client(timeout=10.0) as client:
